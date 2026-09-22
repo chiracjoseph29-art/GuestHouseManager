@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "cursor/**"]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ghms
+          POSTGRES_PASSWORD: ghms_ci
+          POSTGRES_DB: ghms
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ghms"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://ghms:ghms_ci@localhost:5432/ghms?schema=public
+      APP_URL: http://localhost:3847
+      SESSION_SECRET: ci_session_secret_minimum_32_chars
+      CSRF_SECRET: ci_csrf_secret_minimum_32_chars
+      COOKIE_SECURE: "false"
+      SEED_ADMIN_EMAIL: admin@guesthouse.local
+      SEED_ADMIN_PASSWORD: Admin123!SecureSeed
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: npx prisma migrate deploy
+      - run: npx tsx prisma/seed.ts
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+      - run: npm audit --audit-level=critical
+      - name: Secret scan (basic)
+        run: |
+          if rg -n "(BEGIN RSA PRIVATE KEY|AKIA[0-9A-Z]{16})" --glob '!node_modules' .; then
+            echo "Potential secret detected"
+            exit 1
+          fi

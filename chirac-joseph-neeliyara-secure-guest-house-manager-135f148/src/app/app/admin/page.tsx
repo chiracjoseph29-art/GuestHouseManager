@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -19,7 +20,12 @@ export default function AdminPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Administration</h1>
-      <p className="text-sm text-slate-600">Manage staff accounts and review system access.</p>
+      <p className="text-sm text-slate-600">Manage staff accounts, rooms, and review system access.</p>
+      <div className="flex flex-wrap gap-2">
+        <Link href="/app/admin/rooms" className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-slate-50">
+          Rooms
+        </Link>
+      </div>
       <Table>
         <TableHeader>
           <TableRow>

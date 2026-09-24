@@ -2,7 +2,11 @@ import { prisma } from "@/server/db/prisma";
 import { hashPassword, verifyPassword, generateSecureToken, hashToken } from "@/server/lib/crypto";
 import { AppError, AuthError, ValidationError } from "@/server/lib/errors";
 import { writeAuditLog } from "@/server/modules/audit/audit.service";
-import { createSession, revokeSessionByToken } from "@/server/modules/auth/session.service";
+import {
+  issueSessionCredentials,
+  revokeSessionByToken,
+  type SessionCookieAttach,
+} from "@/server/modules/auth/session.service";
 import { getEnv } from "@/server/config/env";
 import type { UserRole } from "@/generated/prisma/client";
 import { getRateLimiter, consumeRateLimit } from "@/server/lib/rate-limit";
@@ -23,16 +27,48 @@ export type AuthMeta = {
 };
 
 export type LoginResult =
-  | { status: "session"; userId: string }
+  | { status: "session"; userId: string; sessionAttach: SessionCookieAttach }
   | { status: "mfa_required"; challengeToken: string; userId: string };
+
+export type LoginClientDiag = {
+  emailLength?: number;
+  passwordLength?: number;
+  passwordHadWhitespace?: boolean;
+  emailHadWhitespace?: boolean;
+  emailStateMatchesDom?: boolean;
+  passwordStateMatchesDom?: boolean;
+};
+
+async function logLoginDiag(
+  payload: Record<string, string | number | boolean | null | undefined>,
+): Promise<void> {
+  if (process.env.NODE_ENV !== "development") return;
+  const { logger } = await import("@/server/lib/logger");
+  const { databaseHostLabel } = await import("@/server/lib/auth-flow-log");
+  logger.info(
+    {
+      authFlow: "login.diag",
+      dbHost: databaseHostLabel(),
+      nodeEnv: process.env.NODE_ENV,
+      ...payload,
+    },
+    "auth.flow",
+  );
+}
 
 export async function login(
   email: string,
   password: string,
   meta: AuthMeta,
+  clientDiag?: LoginClientDiag,
 ): Promise<LoginResult> {
   const normalizedEmail = email.trim().toLowerCase();
+  // Passwords may pick up trailing whitespace from mobile keyboards / autofill paste.
+  const normalizedPassword = password.trim();
   assertNotDemoAccountInProduction(normalizedEmail);
+
+  const { emailFingerprint, databaseHostLabel } = await import("@/server/lib/auth-flow-log");
+  const emailFp = emailFingerprint(normalizedEmail);
 
   const env = getEnv();
   const loginLimiter = await getRateLimiter(
@@ -40,10 +76,42 @@ export async function login(
     env.RATE_LIMIT_LOGIN_MAX,
     Math.floor(env.RATE_LIMIT_LOGIN_WINDOW_MS / 1000),
   );
-  await consumeRateLimit(`${meta.ipAddress ?? "unknown"}:${normalizedEmail}`, loginLimiter);
+  const rateLimitKey = `${meta.ipAddress ?? "unknown"}:${normalizedEmail}`;
+  try {
+    await consumeRateLimit(rateLimitKey, loginLimiter);
+  } catch (err) {
+    await logLoginDiag({
+      step: "rate_limited",
+      emailFp,
+      rateLimitKeyScope: "ip+email",
+      dbHost: databaseHostLabel(),
+    });
+    throw err;
+  }
 
   const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-  const genericFail = () => {
+  const genericFail = async (reason: string) => {
+    await logLoginDiag({
+      step: "auth_failed",
+      reason,
+      emailFp,
+      emailLength: email.length,
+      emailTrimmedLength: normalizedEmail.length,
+      emailHadWhitespace: email !== email.trim(),
+      passwordLength: password.length,
+      passwordTrimmedLength: normalizedPassword.length,
+      passwordHadWhitespace: password !== password.trim(),
+      passwordTrimChanged: password !== normalizedPassword,
+      userFound: Boolean(user),
+      userActive: user?.status === "ACTIVE",
+      passwordVerificationAttempted: reason === "password_mismatch",
+      passwordVerificationSucceeded: false,
+      emailStateMatchesDom: clientDiag?.emailStateMatchesDom,
+      passwordStateMatchesDom: clientDiag?.passwordStateMatchesDom,
+      clientPasswordLength: clientDiag?.passwordLength,
+      clientReportedPasswordWhitespace: clientDiag?.passwordHadWhitespace,
+      dbHost: databaseHostLabel(),
+    });
     void writeAuditLog({
       userId: user?.id,
       action: "auth.login.failure",
@@ -55,15 +123,19 @@ export async function login(
     throw new AuthError("Invalid email or password.");
   };
 
-  if (!user || user.status !== "ACTIVE") {
-    genericFail();
+  if (!user) {
+    await genericFail("user_not_found");
+  }
+
+  if (user!.status !== "ACTIVE") {
+    await genericFail("user_inactive");
   }
 
   if (user!.lockedUntil && user!.lockedUntil > new Date()) {
     throw new AppError("Too many attempts. Please try again later.", 429, "RATE_LIMITED", true);
   }
 
-  const valid = await verifyPassword(user!.passwordHash, password);
+  const valid = await verifyPassword(user!.passwordHash, normalizedPassword);
   if (!valid) {
     const attempts = user!.failedLoginAttempts + 1;
     await prisma.user.update({
@@ -73,8 +145,21 @@ export async function login(
         lockedUntil: attempts >= LOCKOUT_THRESHOLD ? new Date(Date.now() + LOCKOUT_MS) : null,
       },
     });
-    genericFail();
+    await genericFail("password_mismatch");
   }
+
+  await logLoginDiag({
+    step: "auth_ok",
+    emailFp,
+    userFound: true,
+    userActive: true,
+    passwordVerificationAttempted: true,
+    passwordVerificationSucceeded: true,
+    passwordHadWhitespace: password !== password.trim(),
+    emailStateMatchesDom: clientDiag?.emailStateMatchesDom,
+    passwordStateMatchesDom: clientDiag?.passwordStateMatchesDom,
+    dbHost: databaseHostLabel(),
+  });
 
   await prisma.user.update({
     where: { id: user!.id },
@@ -108,7 +193,7 @@ export async function login(
     return { status: "mfa_required", challengeToken, userId: user!.id };
   }
 
-  await createSession(user!.id, {
+  const sessionAttach = await issueSessionCredentials(user!.id, {
     ipAddress: meta.ipAddress,
     userAgent: meta.userAgent,
     isAdmin: user!.role === "ADMIN",
@@ -123,7 +208,7 @@ export async function login(
     userAgent: meta.userAgent,
   });
 
-  return { status: "session", userId: user!.id };
+  return { status: "session", userId: user!.id, sessionAttach };
 }
 
 export async function logout(rawToken: string | null, meta: AuthMeta & { userId?: string }): Promise<void> {

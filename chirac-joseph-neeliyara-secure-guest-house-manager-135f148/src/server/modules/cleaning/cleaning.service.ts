@@ -9,8 +9,9 @@ export async function listCleaningTasksForUser(user: SessionUser) {
     return prisma.cleaningTask.findMany({
       orderBy: { dueAt: "asc" },
       include: {
-        room: { select: { id: true, name: true } },
+        room: { select: { id: true, name: true, isActive: true } },
         assignedTo: { select: { id: true, name: true } },
+        photos: { select: { fileId: true }, orderBy: { createdAt: "desc" }, take: 1 },
       },
       take: 200,
     });
@@ -20,7 +21,8 @@ export async function listCleaningTasksForUser(user: SessionUser) {
     where: { assignedToId: user.id },
     orderBy: { dueAt: "asc" },
     include: {
-      room: { select: { id: true, name: true } },
+      room: { select: { id: true, name: true, isActive: true } },
+      photos: { select: { fileId: true }, orderBy: { createdAt: "desc" }, take: 1 },
     },
   });
 }
@@ -59,16 +61,36 @@ export async function assignCleaningTask(taskId: string, cleanerId: string, acto
 export async function startCleaningTask(taskId: string, user: SessionUser) {
   const task = await getCleaningTask(taskId, user);
   if (user.role === "CLEANER" && task.assignedToId !== user.id) throw new ForbiddenError();
-  return prisma.cleaningTask.update({
+  if (task.status === "COMPLETED") {
+    throw new ValidationError("This task is already completed.");
+  }
+  if (task.status === "IN_PROGRESS") {
+    return task;
+  }
+  if (task.status !== "PENDING") {
+    throw new ValidationError("This task cannot be started in its current state.");
+  }
+  const updated = await prisma.cleaningTask.update({
     where: { id: taskId },
     data: { status: "IN_PROGRESS", startedAt: new Date() },
   });
+  await writeAuditLog({
+    userId: user.id,
+    action: "cleaning.started",
+    resourceType: "cleaning_task",
+    resourceId: taskId,
+    result: "SUCCESS",
+  });
+  return updated;
 }
 
 export async function attachCleaningPhoto(taskId: string, fileId: string, user: SessionUser) {
   const task = await getCleaningTask(taskId, user);
   if (user.role === "CLEANER" && task.assignedToId !== user.id) throw new ForbiddenError();
   await assertFileOwnedForPurpose(fileId, user, "CLEANING_PHOTO");
+  if (task.status !== "IN_PROGRESS") {
+    throw new ValidationError("Start cleaning before uploading a completion photo.");
+  }
 
   await prisma.cleaningPhoto.create({
     data: {
@@ -97,9 +119,15 @@ export async function completeCleaningTask(taskId: string, user: SessionUser) {
   if (user.role === "CLEANER" && task.assignedToId !== user.id) {
     throw new ForbiddenError();
   }
+  if (task.status === "COMPLETED") {
+    throw new ValidationError("This task is already completed.");
+  }
 
   if (task.photos.length === 0) {
     throw new ValidationError("A cleaning photo is required before completion.");
+  }
+  if (task.status !== "IN_PROGRESS") {
+    throw new ValidationError("Start cleaning before completing the task.");
   }
 
   const completionPhotoId = task.photos[task.photos.length - 1].fileId;

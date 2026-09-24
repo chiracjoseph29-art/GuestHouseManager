@@ -5,6 +5,7 @@ import { PERMISSION_DEFINITIONS } from "@/server/rbac/permissions";
 import { ROLE_PERMISSIONS } from "@/server/rbac/permissions";
 import { createUser } from "@/server/modules/auth/auth.service";
 import { getEnv } from "@/server/config/env";
+import { INVENTORY_CATEGORY_SEED } from "@/server/rbac/inventory-categories";
 
 async function main() {
   assertSeedAllowed();
@@ -69,11 +70,19 @@ async function main() {
     });
   }
 
-  const category = await prisma.inventoryCategory.upsert({
-    where: { name: "Housekeeping" },
-    create: { name: "Housekeeping", description: "Linens and supplies" },
-    update: {},
-  });
+  let housekeepingCategoryId: string | null = null;
+  for (const cat of INVENTORY_CATEGORY_SEED) {
+    const row = await prisma.inventoryCategory.upsert({
+      where: { name: cat.name },
+      create: { name: cat.name, description: cat.description },
+      update: { description: cat.description },
+    });
+    if (cat.name === "Housekeeping") housekeepingCategoryId = row.id;
+  }
+  const category =
+    housekeepingCategoryId
+      ? await prisma.inventoryCategory.findUniqueOrThrow({ where: { id: housekeepingCategoryId } })
+      : await prisma.inventoryCategory.findFirstOrThrow({ where: { name: "Housekeeping" } });
 
   await prisma.inventoryItem.upsert({
     where: { name_categoryId: { name: "Towels", categoryId: category.id } },
@@ -88,10 +97,27 @@ async function main() {
     update: {},
   });
 
+  await prisma.roomType.upsert({
+    where: { name: "Single" },
+    create: { name: "Single", maxGuests: 1, baseRate: 1800, extraBedAllowed: false, extraBedRate: 0 },
+    update: { maxGuests: 1, baseRate: 1800, extraBedAllowed: false, extraBedRate: 0 },
+  });
+
   const roomType = await prisma.roomType.upsert({
     where: { name: "Standard Double" },
-    create: { name: "Standard Double", maxGuests: 2, baseRate: 2500 },
-    update: {},
+    create: {
+      name: "Standard Double",
+      maxGuests: 2,
+      baseRate: 2500,
+      extraBedAllowed: true,
+      extraBedRate: 500,
+    },
+    update: {
+      maxGuests: 2,
+      baseRate: 2500,
+      extraBedAllowed: true,
+      extraBedRate: 500,
+    },
   });
 
   for (const name of ["Rose Room", "Lotus Room", "Garden Suite"]) {

@@ -8,7 +8,12 @@ import { getRateLimiter, consumeRateLimit } from "@/server/lib/rate-limit";
 import type { FilePurpose } from "@/generated/prisma/client";
 
 export const POST = withAuth(
-  [PERMISSIONS.CLEANING_EXECUTE, PERMISSIONS.MAINTENANCE_REPORT],
+  [
+    PERMISSIONS.CLEANING_EXECUTE,
+    PERMISSIONS.MAINTENANCE_REPORT,
+    PERMISSIONS.INVENTORY_MANAGE,
+    PERMISSIONS.INVENTORY_VERIFY,
+  ],
   async ({ req, user, correlationId, meta }) => {
     const uploadLimiter = await getRateLimiter("file_upload", 30, 3600);
     await consumeRateLimit(`${user.id}`, uploadLimiter);
@@ -17,7 +22,10 @@ export const POST = withAuth(
     const file = form.get("file");
     const purpose = form.get("purpose") as FilePurpose;
     if (!(file instanceof File)) throw new ValidationError("file is required.");
-    if (!purpose || !["CLEANING_PHOTO", "MAINTENANCE_PHOTO"].includes(purpose)) {
+    if (
+      !purpose ||
+      !["CLEANING_PHOTO", "MAINTENANCE_PHOTO", "INVENTORY_REFERENCE", "INVENTORY_VERIFICATION"].includes(purpose)
+    ) {
       throw new ValidationError("Invalid purpose.");
     }
     const buffer = Buffer.from(await file.arrayBuffer());

@@ -12,6 +12,7 @@ export const PERMISSIONS = {
   INVENTORY_MANAGE: "inventory.manage",
   INVENTORY_VIEW: "inventory.view",
   INVENTORY_ADJUST: "inventory.adjust",
+  INVENTORY_VERIFY: "inventory.verify",
   FINANCE_VIEW: "finance.view",
   FINANCE_MANAGE: "finance.manage",
   AUDIT_VIEW: "audit.view",
@@ -41,7 +42,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionCode[]> = {
   CLEANER: [
     PERMISSIONS.CLEANING_EXECUTE,
     PERMISSIONS.MAINTENANCE_REPORT,
-    PERMISSIONS.INVENTORY_VIEW,
+    PERMISSIONS.INVENTORY_VERIFY,
   ],
 };
 

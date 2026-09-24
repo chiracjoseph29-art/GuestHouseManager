@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "payment_method" VARCHAR(50);
+ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "reference" VARCHAR(100);
+ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "notes" TEXT;
+ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+CREATE INDEX IF NOT EXISTS "expenses_category_idx" ON "expenses"("category");

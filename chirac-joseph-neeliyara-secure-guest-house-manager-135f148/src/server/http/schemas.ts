@@ -1,8 +1,20 @@
 import { z } from "zod";
 
+export const loginClientDiagSchema = z
+  .object({
+    emailLength: z.number().int().nonnegative().optional(),
+    passwordLength: z.number().int().nonnegative().optional(),
+    passwordHadWhitespace: z.boolean().optional(),
+    emailHadWhitespace: z.boolean().optional(),
+    emailStateMatchesDom: z.boolean().optional(),
+    passwordStateMatchesDom: z.boolean().optional(),
+  })
+  .optional();
+
 export const loginSchema = z.object({
   email: z.string().email().max(320),
   password: z.string().min(8).max(200),
+  clientDiag: loginClientDiagSchema,
 });
 
 export const createBookingSchema = z.object({
@@ -11,15 +23,25 @@ export const createBookingSchema = z.object({
     email: z.string().email().max(320).optional(),
     phone: z.string().max(30).optional(),
   }),
+  guestId: z.string().uuid().optional(),
   checkIn: z.string().datetime(),
   checkOut: z.string().datetime(),
   guestCount: z.number().int().min(1).max(50),
   source: z.enum(["DIRECT", "ONLINE", "PHONE", "WALK_IN", "OTHER"]),
   isWholeHouse: z.boolean(),
   roomIds: z.array(z.string().uuid()).default([]),
-  amountTotal: z.number().min(0),
+  extraBedCount: z.number().int().min(0).optional(),
+  roomNightlyRate: z.number().min(0).optional(),
+  extraBedNightlyRate: z.number().min(0).optional(),
   amountPaid: z.number().min(0).optional(),
   notes: z.string().max(5000).optional(),
+  status: z
+    .enum(["PENDING", "CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "CANCELLED", "NO_SHOW"])
+    .optional(),
+});
+
+export const updateBookingSchema = createBookingSchema.extend({
+  id: z.string().uuid(),
 });
 
 export const inventoryChangeSchema = z.object({

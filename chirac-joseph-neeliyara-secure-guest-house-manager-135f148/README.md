@@ -18,10 +18,11 @@ Production-oriented, security-first web application and PWA for small guest hous
    cp .env.example .env
    ```
 
-2. Start PostgreSQL and apply migrations + seed:
+2. Start **local** PostgreSQL and apply migrations + seed (do not use Prisma Postgres / `db.prisma.io` for day-to-day dev — remote latency makes every page and API call slow):
 
    ```bash
    npm install --legacy-peer-deps
+   # Set DATABASE_URL in .env to your local instance (see .env.example)
    npx prisma migrate deploy
    npm run db:seed
    ```

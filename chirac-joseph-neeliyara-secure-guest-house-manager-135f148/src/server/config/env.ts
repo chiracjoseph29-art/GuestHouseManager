@@ -50,3 +50,12 @@ export function getEnv(): AppEnv {
 export function isProduction(): boolean {
   return getEnv().NODE_ENV === "production";
 }
+
+export function isDevelopment(): boolean {
+  return getEnv().NODE_ENV === "development";
+}
+
+/** @internal Test-only — clears cached env after process.env changes. */
+export function resetEnvCacheForTests(): void {
+  cached = null;
+}

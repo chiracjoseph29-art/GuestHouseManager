@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import {
   assignCleaningTask,
   attachCleaningPhoto,
@@ -20,7 +19,9 @@ export const GET = withAuth(
   { anyOf: true },
 );
 
-export const PATCH = withAuth(PERMISSIONS.CLEANING_EXECUTE, async ({ req, user, correlationId }) => {
+export const PATCH = withAuth(
+  [PERMISSIONS.CLEANING_EXECUTE, PERMISSIONS.CLEANING_MANAGE],
+  async ({ req, user, correlationId }) => {
   const body = await req.json().catch(() => null);
   const action = body?.action as string;
   const taskId = body?.taskId as string;
@@ -41,7 +42,9 @@ export const PATCH = withAuth(PERMISSIONS.CLEANING_EXECUTE, async ({ req, user, 
     return jsonOk({ ok: true }, correlationId);
   }
   throw new ValidationError("Unknown action.");
-});
+  },
+  { anyOf: true },
+);
 
 export const POST = withAuth(PERMISSIONS.CLEANING_MANAGE, async ({ req, user, correlationId }) => {
   const body = await req.json().catch(() => null);

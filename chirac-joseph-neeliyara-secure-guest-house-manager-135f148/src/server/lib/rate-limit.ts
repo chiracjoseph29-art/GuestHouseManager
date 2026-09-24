@@ -1,9 +1,21 @@
 import { RateLimiterMemory, RateLimiterRedis } from "rate-limiter-flexible";
-import { getEnv } from "@/server/config/env";
 
 type Limiter = RateLimiterMemory | RateLimiterRedis;
 
 const cache = new Map<string, Limiter>();
+
+/**
+ * Development-only: drop cached in-memory limiters so login attempt counters reset.
+ * Requires ALLOW_DEV_RATE_LIMIT_RESET=true. Does not affect production or Redis-backed limits.
+ */
+export function resetDevRateLimitCaches(): { clearedLimiters: number } {
+  if (process.env.NODE_ENV !== "development" || process.env.ALLOW_DEV_RATE_LIMIT_RESET !== "true") {
+    return { clearedLimiters: 0 };
+  }
+  const clearedLimiters = cache.size;
+  cache.clear();
+  return { clearedLimiters };
+}
 
 export async function getRateLimiter(
   name: string,

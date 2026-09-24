@@ -12,7 +12,15 @@ export function useSession() {
     fetchMe().then(setUser);
   }, []);
 
-  const requireAuth = (allowed?: SessionUser["role"][]) => {
+  return { user, setUser };
+}
+
+/** Redirect to login (or app) after session is resolved — never during render. */
+export function useRequireAuth(allowed?: SessionUser["role"][]) {
+  const { user } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
     if (user === undefined) return;
     if (!user) {
       router.replace("/login");
@@ -21,7 +29,7 @@ export function useSession() {
     if (allowed && !allowed.includes(user.role)) {
       router.replace("/app");
     }
-  };
+  }, [user, allowed, router]);
 
-  return { user, setUser, requireAuth };
+  return { user };
 }

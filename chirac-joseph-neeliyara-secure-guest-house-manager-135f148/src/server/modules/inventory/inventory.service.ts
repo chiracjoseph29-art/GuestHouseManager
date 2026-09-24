@@ -9,10 +9,19 @@ import { PERMISSIONS } from "@/server/rbac/permissions";
 
 async function assertInventoryAccess(user: SessionUser, action: "view" | "adjust" | "consume") {
   if (user.role === "ADMIN") return;
-  if (user.role === "MANAGER") {
-    assertPermission(user, action === "view" ? PERMISSIONS.INVENTORY_VIEW : PERMISSIONS.INVENTORY_MANAGE);
+
+  if (action === "view") {
+    try {
+      assertPermission(user, PERMISSIONS.INVENTORY_VIEW);
+      return;
+    } catch {
+      /* fall through to per-user inventory grants */
+    }
+  } else if (user.role === "MANAGER") {
+    assertPermission(user, PERMISSIONS.INVENTORY_MANAGE);
     return;
   }
+
   const perm = await prisma.userInventoryPermission.findUnique({ where: { userId: user.id } });
   if (!perm) throw new ForbiddenError();
   if (action === "view" && !perm.canView) throw new ForbiddenError();
@@ -20,16 +29,69 @@ async function assertInventoryAccess(user: SessionUser, action: "view" | "adjust
   if (action === "adjust" && !perm.canAdjust) throw new ForbiddenError();
 }
 
+function serializeInventoryItem(
+  i: {
+    id: string;
+    name: string;
+    categoryId: string;
+    quantity: number;
+    minimumThreshold: number;
+    unit: string;
+    location: string | null;
+    allowNegative: boolean;
+    referencePhotoId: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    category: { id: string; name: string };
+    referencePhoto: { id: string } | null;
+  },
+  assignedQty: number,
+) {
+  return {
+    id: i.id,
+    name: i.name,
+    categoryId: i.categoryId,
+    quantity: i.quantity,
+    minimumThreshold: i.minimumThreshold,
+    unit: i.unit,
+    location: i.location,
+    allowNegative: i.allowNegative,
+    referencePhotoId: i.referencePhotoId ?? i.referencePhoto?.id ?? null,
+    createdAt: i.createdAt.toISOString(),
+    updatedAt: i.updatedAt.toISOString(),
+    category: i.category ? { id: i.category.id, name: i.category.name } : null,
+    assignedQuantity: assignedQty,
+    availableQuantity: i.quantity,
+    lowStock: i.quantity <= i.minimumThreshold,
+  };
+}
+
+async function loadAssignedQuantities(): Promise<Map<string, number>> {
+  try {
+    const assigned = await prisma.roomInventory.groupBy({
+      by: ["itemId"],
+      _sum: { assignedQuantity: true },
+    });
+    return new Map(assigned.map((a) => [a.itemId, a._sum.assignedQuantity ?? 0]));
+  } catch {
+    return new Map();
+  }
+}
+
 export async function listInventory(user: SessionUser) {
   await assertInventoryAccess(user, "view");
-  const items = await prisma.inventoryItem.findMany({
-    include: { category: true },
-    orderBy: { name: "asc" },
-  });
-  return items.map((i) => ({
-    ...i,
-    lowStock: i.quantity <= i.minimumThreshold,
-  }));
+  const [items, categories, assignedMap] = await Promise.all([
+    prisma.inventoryItem.findMany({
+      include: { category: true, referencePhoto: { select: { id: true } } },
+      orderBy: { name: "asc" },
+    }),
+    prisma.inventoryCategory.findMany({ orderBy: { name: "asc" } }),
+    loadAssignedQuantities(),
+  ]);
+  return {
+    items: items.map((i) => serializeInventoryItem(i, assignedMap.get(i.id) ?? 0)),
+    categories: categories.map((c) => ({ id: c.id, name: c.name })),
+  };
 }
 
 export async function applyInventoryChange(
@@ -95,5 +157,52 @@ export async function createInventoryItem(
   },
 ) {
   assertPermission(user, PERMISSIONS.INVENTORY_MANAGE);
-  return prisma.inventoryItem.create({ data });
+  const item = await prisma.inventoryItem.create({ data });
+  await writeAuditLog({
+    userId: user.id,
+    action: "inventory.created",
+    resourceType: "inventory_item",
+    resourceId: item.id,
+    result: "SUCCESS",
+    metadata: { name: item.name },
+  });
+  return item;
+}
+
+export async function updateInventoryItem(
+  user: SessionUser,
+  itemId: string,
+  data: {
+    name?: string;
+    categoryId?: string;
+    minimumThreshold?: number;
+    unit?: string;
+    location?: string;
+  },
+) {
+  assertPermission(user, PERMISSIONS.INVENTORY_MANAGE);
+  const existing = await prisma.inventoryItem.findUnique({ where: { id: itemId } });
+  if (!existing) throw new NotFoundError();
+
+  const item = await prisma.inventoryItem.update({
+    where: { id: itemId },
+    data: {
+      name: data.name?.trim() ?? existing.name,
+      categoryId: data.categoryId ?? existing.categoryId,
+      minimumThreshold: data.minimumThreshold ?? existing.minimumThreshold,
+      unit: data.unit?.trim() ?? existing.unit,
+      location: data.location !== undefined ? data.location.trim() || null : existing.location,
+    },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: "inventory.updated",
+    resourceType: "inventory_item",
+    resourceId: itemId,
+    result: "SUCCESS",
+    metadata: { name: item.name },
+  });
+
+  return item;
 }

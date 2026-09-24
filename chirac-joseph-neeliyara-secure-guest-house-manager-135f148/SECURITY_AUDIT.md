@@ -84,6 +84,8 @@ Managers previously passed `userCanAccessFile` for all files. **Fix:** Managers 
 
 Required by current Tailwind/shadcn inline patterns. **Mitigation:** nonce-based styles in future; document exception.
 
+**Development only:** `script-src` includes `'unsafe-eval'` when `NODE_ENV=development` (`src/middleware.ts`) so React/Next.js/Turbopack dev tooling can run. Production, staging, and test omit `'unsafe-eval'`; `script-src` remains `'self'` plus per-request nonce.
+
 ### M-4: Login/password-reset without CSRF (ACCEPTED)
 
 Public auth endpoints intentionally skip CSRF; **residual** login CSRF risk—mitigate with SameSite cookies (Lax) and monitoring.

@@ -18,20 +18,21 @@ describe("concurrency", () => {
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
 
+    const phoneA = `2${Date.now().toString().slice(-9)}`;
+    const phoneB = `2${(Date.now() + 7).toString().slice(-9)}`;
     const input = {
-      guest: { fullName: "Race Guest" },
+      guest: { fullName: "Race Guest", phone: phoneA },
       checkIn: start,
       checkOut: end,
       guestCount: 1,
       source: "DIRECT" as const,
       isWholeHouse: false,
       roomIds: [room.id],
-      amountTotal: 100,
     };
 
     const results = await Promise.allSettled([
       createBooking(input, admin),
-      createBooking({ ...input, guest: { fullName: "Race Guest 2" } }, admin),
+      createBooking({ ...input, guest: { fullName: "Race Guest 2", phone: phoneB } }, admin),
     ]);
     const fulfilled = results.filter((r) => r.status === "fulfilled");
     const rejected = results.filter((r) => r.status === "rejected");

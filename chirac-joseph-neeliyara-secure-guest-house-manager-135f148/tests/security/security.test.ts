@@ -45,27 +45,25 @@ describe("booking conflicts", () => {
     try {
       await createBooking(
         {
-          guest: { fullName: "Conflict Test Guest" },
+          guest: { fullName: "Conflict Test Guest", phone: `1${Date.now().toString().slice(-9)}` },
           checkIn: start,
           checkOut: end,
           guestCount: 2,
           source: "DIRECT",
           isWholeHouse: false,
           roomIds: [room.id],
-          amountTotal: 1000,
         },
         admin,
       );
       await createBooking(
         {
-          guest: { fullName: "Conflict Test Guest 2" },
+          guest: { fullName: "Conflict Test Guest 2", phone: `1${(Date.now() + 3).toString().slice(-9)}` },
           checkIn: start,
           checkOut: end,
           guestCount: 2,
           source: "DIRECT",
           isWholeHouse: false,
           roomIds: [room.id],
-          amountTotal: 1000,
         },
         admin,
       );
@@ -85,28 +83,26 @@ describe("booking conflicts", () => {
     end.setDate(end.getDate() + 1);
     await createBooking(
       {
-        guest: { fullName: "Overlap A" },
+        guest: { fullName: "Overlap A", phone: `1${(Date.now() + 10).toString().slice(-9)}` },
         checkIn: start,
         checkOut: end,
         guestCount: 1,
         source: "DIRECT",
         isWholeHouse: false,
         roomIds: [room.id],
-        amountTotal: 500,
       },
       admin,
     );
     await expect(
       createBooking(
         {
-          guest: { fullName: "Overlap B" },
+          guest: { fullName: "Overlap B", phone: `1${(Date.now() + 11).toString().slice(-9)}` },
           checkIn: start,
           checkOut: end,
           guestCount: 1,
           source: "DIRECT",
           isWholeHouse: false,
           roomIds: [room.id],
-          amountTotal: 500,
         },
         admin,
       ),

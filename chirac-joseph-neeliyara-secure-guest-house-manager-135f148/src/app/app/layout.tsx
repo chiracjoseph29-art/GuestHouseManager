@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useSession } from "@/hooks/use-session";
+import { useRequireAuth } from "@/hooks/use-session";
 import { api, clearCsrfCache } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,27 +13,30 @@ const navForRole = (role: string) => {
     return [
       ...common,
       { href: "/app/cleaning", label: "My tasks" },
-      { href: "/app/inventory", label: "Inventory" },
+      { href: "/app/room-inventory", label: "Room inventory" },
     ];
   }
   return [
     ...common,
     { href: "/app/bookings", label: "Bookings" },
+    { href: "/app/customers", label: "Customers" },
+    { href: "/app/finance", label: "Finance" },
     { href: "/app/cleaning", label: "Cleaning" },
     { href: "/app/inventory", label: "Inventory" },
     { href: "/app/audit", label: "Audit log" },
     ...(role === "ADMIN"
-      ? [{ href: "/app/admin", label: "Administration" }]
+      ? [
+          { href: "/app/room-inventory", label: "Room inventory" },
+          { href: "/app/admin", label: "Administration" },
+        ]
       : [{ href: "/app/reports", label: "Reports" }]),
   ];
 };
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, requireAuth } = useSession();
+  const { user } = useRequireAuth();
   const pathname = usePathname();
   const router = useRouter();
-
-  requireAuth();
 
   async function logout() {
     await api("/api/v1/auth/logout", { method: "POST" });

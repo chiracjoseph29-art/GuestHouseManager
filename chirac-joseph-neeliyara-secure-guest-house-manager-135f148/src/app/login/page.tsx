@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, clearCsrfCache, ensureCsrf } from "@/lib/api-client";
+import { api, clearCsrfCache, ensureCsrf, fetchMe } from "@/lib/api-client";
+import { readLoginFormValues } from "@/lib/login-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,14 +18,31 @@ export default function LoginPage() {
   const [mfaChallenge, setMfaChallenge] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState("");
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     try {
+      // Prefer live DOM values — iOS Safari / Keychain often fill inputs without syncing React state.
+      const { email: submitEmail, password: submitPassword, diag } = readLoginFormValues(
+        e.currentTarget,
+        email,
+        password,
+      );
+      setEmail(submitEmail);
+      setPassword(submitPassword);
+
       await ensureCsrf();
-      const loginRes = await api<{ status: string; challengeToken?: string }>("/api/v1/auth/login", {
+      const loginRes = await api<{
+        status: string;
+        challengeToken?: string;
+        bootstrapToken?: string;
+      }>("/api/v1/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email: submitEmail,
+          password: submitPassword,
+          clientDiag: diag,
+        }),
       });
       if (loginRes.data.status === "mfa_required" && loginRes.data.challengeToken) {
         setMfaChallenge(loginRes.data.challengeToken);
@@ -32,7 +50,19 @@ export default function LoginPage() {
         return;
       }
       clearCsrfCache();
-      router.push("/app");
+      const me = await fetchMe();
+      if (!me) {
+        if (loginRes.data.bootstrapToken) {
+          // Top-level navigation: iOS Safari often ignores Set-Cookie from fetch on http://<LAN-IP>.
+          window.location.assign(
+            `/api/v1/auth/bootstrap?t=${encodeURIComponent(loginRes.data.bootstrapToken)}`,
+          );
+          return;
+        }
+        toast.error("Sign-in succeeded but the session cookie was not saved. Try again or check browser cookie settings.");
+        return;
+      }
+      router.replace("/app");
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sign-in failed.");
@@ -46,12 +76,23 @@ export default function LoginPage() {
     if (!mfaChallenge) return;
     setLoading(true);
     try {
-      await api("/api/v1/auth/mfa", {
+      const mfaRes = await api<{ userId: string; bootstrapToken?: string }>("/api/v1/auth/mfa", {
         method: "POST",
         body: JSON.stringify({ challengeToken: mfaChallenge, code: mfaCode }),
       });
       clearCsrfCache();
-      router.push("/app");
+      const me = await fetchMe();
+      if (!me) {
+        if (mfaRes.data.bootstrapToken) {
+          window.location.assign(
+            `/api/v1/auth/bootstrap?t=${encodeURIComponent(mfaRes.data.bootstrapToken)}`,
+          );
+          return;
+        }
+        toast.error("Verification succeeded but the session cookie was not saved.");
+        return;
+      }
+      router.replace("/app");
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Verification failed.");
@@ -86,15 +127,17 @@ export default function LoginPage() {
               </Button>
             </form>
           ) : (
-          <form className="space-y-4" onSubmit={onSubmit}>
+          <form className="space-y-4" method="post" onSubmit={onSubmit}>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
                 required
               />
             </div>
@@ -102,10 +145,12 @@ export default function LoginPage() {
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
                 required
               />
             </div>

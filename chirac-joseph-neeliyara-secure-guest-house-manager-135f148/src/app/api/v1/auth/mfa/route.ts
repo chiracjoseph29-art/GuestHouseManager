@@ -7,6 +7,9 @@ import {
   disableMfa,
   verifyMfaLogin,
 } from "@/server/modules/auth/mfa.service";
+import { attachSessionCookie } from "@/server/modules/auth/session.service";
+import { needsSessionCookieBootstrap } from "@/server/http/cookie-options";
+import { issueSessionBootstrap } from "@/server/modules/auth/session-bootstrap";
 
 const verifySchema = z.object({
   challengeToken: z.string().min(20),
@@ -21,7 +24,16 @@ export const POST = withPublicHandler(async ({ req, correlationId, meta }) => {
     ...meta,
     correlationId,
   });
-  return jsonOk(result, correlationId);
+  const bootstrapNeeded = needsSessionCookieBootstrap(req);
+  const bootstrapToken = bootstrapNeeded
+    ? issueSessionBootstrap(result.sessionAttach.token, result.sessionAttach.expiresAt)
+    : undefined;
+  const response = jsonOk(
+    { userId: result.userId, ...(bootstrapToken ? { bootstrapToken } : {}) },
+    correlationId,
+  );
+  attachSessionCookie(response, req, result.sessionAttach);
+  return response;
 });
 
 export const PUT = withAuth(null, async ({ req, user, correlationId }) => {

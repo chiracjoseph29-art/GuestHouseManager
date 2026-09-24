@@ -4,6 +4,7 @@ export class AppError extends Error {
     public readonly statusCode: number = 500,
     public readonly code: string = "INTERNAL_ERROR",
     public readonly exposeMessage = false,
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "AppError";
@@ -35,7 +36,10 @@ export class NotFoundError extends AppError {
 }
 
 export class ConflictError extends AppError {
-  constructor(message = "Unable to complete this request due to a conflict.") {
-    super(message, 409, "CONFLICT", true);
+  constructor(
+    message = "Unable to complete this request due to a conflict.",
+    details?: Record<string, unknown>,
+  ) {
+    super(message, 409, "CONFLICT", true, details);
   }
 }

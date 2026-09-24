@@ -24,9 +24,32 @@ export async function api<T>(
   const res = await fetch(path, { ...init, headers, credentials: "include" });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(json?.error?.message ?? "Unable to complete this request.");
+    const code = json?.error?.code as string | undefined;
+    const rawMessage = json?.error?.message;
+    const message =
+      typeof rawMessage === "string" && rawMessage.trim().length > 0
+        ? rawMessage.trim()
+        : res.status === 401
+          ? "Please sign in again."
+          : res.status === 403
+            ? "You do not have permission to perform this action."
+            : "Unable to complete this request.";
+    const details = json?.error?.details as Record<string, unknown> | undefined;
+    throw new ApiRequestError(message, res.status, details, code);
   }
   return json;
+}
+
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly details?: Record<string, unknown>,
+    public readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
 }
 
 export async function apiForm<T>(path: string, form: FormData): Promise<{ data: T }> {

@@ -5,7 +5,11 @@ import { isProduction } from "@/server/config/env";
 import { generateSecureToken, hashToken, verifyPassword } from "@/server/lib/crypto";
 import { ForbiddenError, ValidationError, AuthError } from "@/server/lib/errors";
 import { writeAuditLog } from "@/server/modules/audit/audit.service";
-import { createSession, type SessionUser } from "@/server/modules/auth/session.service";
+import {
+  issueSessionCredentials,
+  type SessionCookieAttach,
+  type SessionUser,
+} from "@/server/modules/auth/session.service";
 import type { AuthMeta } from "@/server/modules/auth/auth.service";
 import { getEnv } from "@/server/config/env";
 
@@ -114,7 +118,7 @@ export async function verifyMfaLogin(
   challengeToken: string,
   totpOrRecovery: string,
   meta: AuthMeta,
-): Promise<{ userId: string }> {
+): Promise<{ userId: string; sessionAttach: SessionCookieAttach }> {
   const tokenHash = hashToken(challengeToken);
   const challenge = await prisma.mfaLoginChallenge.findFirst({
     where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
@@ -151,7 +155,7 @@ export async function verifyMfaLogin(
   }
 
   await prisma.mfaLoginChallenge.update({ where: { id: challenge.id }, data: { usedAt: new Date() } });
-  await createSession(challenge.userId, {
+  const sessionAttach = await issueSessionCredentials(challenge.userId, {
     ipAddress: meta.ipAddress,
     userAgent: meta.userAgent,
     isAdmin: challenge.user.role === "ADMIN",
@@ -163,7 +167,7 @@ export async function verifyMfaLogin(
     correlationId: meta.correlationId,
     ipAddress: meta.ipAddress,
   });
-  return { userId: challenge.userId };
+  return { userId: challenge.userId, sessionAttach };
 }
 
 export async function disableMfa(

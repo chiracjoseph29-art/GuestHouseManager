@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { prisma } from "@/server/db/prisma";
 import {
   completeCleaningTask,
+  verifyCleaningTask,
   startCleaningTask,
 } from "@/server/modules/cleaning/cleaning.service";
 import { createInventoryItem } from "@/server/modules/inventory/inventory.service";
@@ -155,9 +156,10 @@ describe("room inventory and cleaning operations", () => {
       data: { cleaningTaskId: task.id, fileId: file.fileId, uploadedById: admin.id },
     });
 
-    const completed = await completeCleaningTask(task.id, admin);
-    expect(completed.status).toBe("COMPLETED");
-    expect(completed.completionPhotoId).toBe(file.fileId);
+    const submitted = await completeCleaningTask(task.id, admin);
+    expect(submitted.status).toBe("AWAITING_VERIFICATION");
+    const completed = await verifyCleaningTask(task.id, admin);
+    expect(completed?.status).toBe("COMPLETED");
 
     await prisma.cleaningPhoto.deleteMany({ where: { cleaningTaskId: task.id } });
     await prisma.cleaningTask.delete({ where: { id: task.id } });
@@ -179,8 +181,11 @@ describe("room inventory and cleaning operations", () => {
     await prisma.cleaningPhoto.create({
       data: { cleaningTaskId: task.id, fileId: file.fileId, uploadedById: cleaner.id },
     });
-    const completed = await completeCleaningTask(task.id, cleaner);
-    expect(completed.status).toBe("COMPLETED");
+    const submitted = await completeCleaningTask(task.id, cleaner);
+    expect(submitted.status).toBe("AWAITING_VERIFICATION");
+    const adminRow = await prisma.user.findFirst({ where: { role: "ADMIN" } });
+    const completed = await verifyCleaningTask(task.id, sessionFromUser({ ...adminRow!, role: "ADMIN" }));
+    expect(completed?.status).toBe("COMPLETED");
 
     await prisma.cleaningTask.update({
       where: { id: task.id },

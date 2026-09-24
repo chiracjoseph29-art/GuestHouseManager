@@ -9,13 +9,26 @@ import { submitRoomInventoryVerifications } from "@/lib/room-inventory-verify";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
 type Task = {
   id: string;
   status: string;
   completionPhotoId?: string | null;
+  submittedForVerificationAt?: string | null;
+  submissionMeta?: { roomCleaned?: boolean; inventoryChecked?: boolean } | null;
   room: { id: string; name: string };
+  assignedTo?: { id: string; name: string } | null;
+  verifiedBy?: { id: string; name: string } | null;
   photos?: { fileId: string }[];
 };
 
@@ -24,13 +37,18 @@ const MAX_UPLOAD_BYTES = 5_242_880;
 function statusBadgeVariant(status: string) {
   if (status === "COMPLETED") return "secondary";
   if (status === "IN_PROGRESS") return "default";
+  if (status === "AWAITING_VERIFICATION") return "default";
   return "outline";
 }
 
 export default function CleaningPage() {
   const { user } = useSession();
   const isAdmin = user?.role === "ADMIN";
+  const canVerify = user?.role === "ADMIN" || user?.role === "MANAGER";
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [reviewTask, setReviewTask] = useState<Task | null>(null);
+  const [issueReason, setIssueReason] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
   const [deleteTask, setDeleteTask] = useState<Task | null>(null);
   const [deletingTask, setDeletingTask] = useState(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -118,7 +136,7 @@ export default function CleaningPage() {
       if (old) URL.revokeObjectURL(old);
       return { ...prev, [taskId]: URL.createObjectURL(file) };
     });
-    toast.message("Photo selected. Click Complete cleaning when ready.");
+    toast.message("Photo selected. Submit for verification when ready.");
   }
 
   function hasPhotoReady(task: Task): boolean {
@@ -179,9 +197,14 @@ export default function CleaningPage() {
 
       await api("/api/v1/cleaning/tasks", {
         method: "PATCH",
-        body: JSON.stringify({ action: "complete", taskId: id }),
+        body: JSON.stringify({
+          action: "submit_for_verification",
+          taskId: id,
+          roomCleaned: true,
+          inventoryChecked: true,
+        }),
       });
-      toast.success("Cleaning completed.");
+      toast.success("Submitted for manager verification.");
       setPendingFiles((p) => {
         const next = { ...p };
         delete next[id];
@@ -207,19 +230,65 @@ export default function CleaningPage() {
     }
   }
 
+  async function verifyReviewedTask() {
+    if (!reviewTask) return;
+    setReviewBusy(true);
+    try {
+      await api("/api/v1/cleaning/tasks", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "verify", taskId: reviewTask.id }),
+      });
+      toast.success("Cleaning verified and completed.");
+      setReviewTask(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not verify cleaning.");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  async function sendBackReviewedTask() {
+    if (!reviewTask) return;
+    if (!issueReason.trim()) {
+      toast.error("Enter a reason for the issue.");
+      return;
+    }
+    setReviewBusy(true);
+    try {
+      await api("/api/v1/cleaning/tasks", {
+        method: "PATCH",
+        body: JSON.stringify({
+          action: "report_verification_issue",
+          taskId: reviewTask.id,
+          reason: issueReason.trim(),
+        }),
+      });
+      toast.success("Issue reported. Cleaner can address and resubmit.");
+      setReviewTask(null);
+      setIssueReason("");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not report issue.");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-lg space-y-4">
       <div>
         <h1 className="text-2xl font-semibold">Cleaning tasks</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Start cleaning → check room inventory → upload completion photo → complete
+          Start cleaning → checklists → completion photo → submit for verification
         </p>
       </div>
       {tasks.length === 0 && <p className="text-sm text-slate-500">No tasks assigned.</p>}
       {tasks.map((task) => {
         const isCompleted = task.status === "COMPLETED";
+        const awaiting = task.status === "AWAITING_VERIFICATION";
         const inProgress = task.status === "IN_PROGRESS";
-        const pending = task.status === "PENDING";
+        const pending = task.status === "PENDING" || task.status === "ISSUE_REPORTED";
         const photoId = completionPhotoId(task);
         const preview = previewUrls[task.id];
         const photoAttached = hasPhotoReady(task);
@@ -249,10 +318,34 @@ export default function CleaningPage() {
             <CardContent className="space-y-4">
               {pending && (
                 <div className="space-y-2">
+                  {task.status === "ISSUE_REPORTED" && (
+                    <p className="text-sm text-amber-800">Issue reported — please address and clean again.</p>
+                  )}
                   <p className="text-sm text-slate-600">Ready to clean this room.</p>
                   <Button disabled={loadingId === task.id} onClick={() => startTask(task.id)}>
                     Start cleaning
                   </Button>
+                </div>
+              )}
+
+              {awaiting && (
+                <div className="space-y-3">
+                  {canVerify ? (
+                    <>
+                      <p className="text-sm text-slate-600">
+                        Submitted
+                        {task.submittedForVerificationAt
+                          ? ` ${new Date(task.submittedForVerificationAt).toLocaleString("en-IN")}`
+                          : ""}
+                        {task.assignedTo ? ` by ${task.assignedTo.name}` : ""}.
+                      </p>
+                      <Button type="button" onClick={() => setReviewTask(task)}>
+                        Review &amp; Complete
+                      </Button>
+                    </>
+                  ) : (
+                    <p className="text-sm font-medium text-blue-800">Awaiting Manager/Admin verification</p>
+                  )}
                 </div>
               )}
 
@@ -334,7 +427,7 @@ export default function CleaningPage() {
                     }
                     onClick={() => void completeTask(task)}
                   >
-                    Complete cleaning
+                    Submit for verification
                   </Button>
                 </div>
               )}
@@ -342,12 +435,8 @@ export default function CleaningPage() {
               {isCompleted && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-green-700">✓ Cleaning completed</p>
-                  {photoId && (
-                    <img
-                      src={`/api/v1/files?id=${photoId}`}
-                      alt="Cleaning completion"
-                      className="max-h-48 rounded-md border object-cover"
-                    />
+                  {task.verifiedBy && (
+                    <p className="text-xs text-slate-600">Verified by {task.verifiedBy.name}</p>
                   )}
                 </div>
               )}
@@ -355,6 +444,57 @@ export default function CleaningPage() {
           </Card>
         );
       })}
+      <Dialog open={Boolean(reviewTask)} onOpenChange={(open) => !open && setReviewTask(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Review cleaning — {reviewTask?.room.name}</DialogTitle>
+          </DialogHeader>
+          {reviewTask && (
+            <div className="space-y-3 text-sm">
+              <p>
+                Cleaner: <strong>{reviewTask.assignedTo?.name ?? "Unassigned"}</strong>
+              </p>
+              {reviewTask.submittedForVerificationAt && (
+                <p>Submitted: {new Date(reviewTask.submittedForVerificationAt).toLocaleString("en-IN")}</p>
+              )}
+              <p>
+                Room cleaned: {reviewTask.submissionMeta?.roomCleaned ? "Yes" : "—"} · Inventory checked:{" "}
+                {reviewTask.submissionMeta?.inventoryChecked ? "Yes" : "—"}
+              </p>
+              {(reviewTask.completionPhotoId ?? reviewTask.photos?.[0]?.fileId) && (
+                <img
+                  src={`/api/v1/files?id=${reviewTask.completionPhotoId ?? reviewTask.photos?.[0]?.fileId}`}
+                  alt="Completion photo"
+                  className="w-full max-h-80 rounded-md border object-contain bg-slate-50"
+                />
+              )}
+              <div>
+                <Label htmlFor="issue-reason">Report issue / send back (optional reason)</Label>
+                <Input
+                  id="issue-reason"
+                  value={issueReason}
+                  onChange={(e) => setIssueReason(e.target.value)}
+                  placeholder="Describe what needs to be fixed"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={reviewBusy}
+              onClick={() => void sendBackReviewedTask()}
+            >
+              Report issue / Send back
+            </Button>
+            <Button type="button" disabled={reviewBusy} onClick={() => void verifyReviewedTask()}>
+              Verify &amp; Complete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDeleteDialog
         open={Boolean(deleteTask)}
         onOpenChange={(open) => !open && setDeleteTask(null)}

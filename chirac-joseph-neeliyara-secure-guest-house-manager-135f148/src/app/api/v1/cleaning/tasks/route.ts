@@ -1,10 +1,12 @@
 import {
   assignCleaningTask,
   attachCleaningPhoto,
-  completeCleaningTask,
   deleteCleaningTaskPermanent,
   listCleaningTasksForUser,
+  reportCleaningVerificationIssue,
   startCleaningTask,
+  submitCleaningForVerification,
+  verifyCleaningTask,
 } from "@/server/modules/cleaning/cleaning.service";
 import { jsonOk, withAuth } from "@/server/http/api-handler";
 import { assignCleanerSchema } from "@/server/http/schemas";
@@ -21,7 +23,7 @@ export const GET = withAuth(
 );
 
 export const PATCH = withAuth(
-  [PERMISSIONS.CLEANING_EXECUTE, PERMISSIONS.CLEANING_MANAGE],
+  [PERMISSIONS.CLEANING_EXECUTE, PERMISSIONS.CLEANING_MANAGE, PERMISSIONS.CLEANING_VERIFY],
   async ({ req, user, correlationId }) => {
   const body = await req.json().catch(() => null);
   const action = body?.action as string;
@@ -32,8 +34,21 @@ export const PATCH = withAuth(
     const task = await startCleaningTask(taskId, user);
     return jsonOk({ task }, correlationId);
   }
-  if (action === "complete") {
-    const task = await completeCleaningTask(taskId, user);
+  if (action === "complete" || action === "submit_for_verification") {
+    const meta = {
+      roomCleaned: body?.roomCleaned === true || body?.roomCleaned === undefined,
+      inventoryChecked: body?.inventoryChecked === true || body?.inventoryChecked === undefined,
+    };
+    const task = await submitCleaningForVerification(taskId, user, meta);
+    return jsonOk({ task }, correlationId);
+  }
+  if (action === "verify") {
+    const task = await verifyCleaningTask(taskId, user);
+    return jsonOk({ task }, correlationId);
+  }
+  if (action === "report_verification_issue") {
+    const reason = String(body?.reason ?? "");
+    const task = await reportCleaningVerificationIssue(taskId, user, { reason });
     return jsonOk({ task }, correlationId);
   }
   if (action === "attach_photo") {

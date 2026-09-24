@@ -130,6 +130,7 @@ model User {
   sessions                 Session[]
   passwordResetTokens      PasswordResetToken[]
   cleaningTasks            CleaningTask[]           @relation("AssignedCleaner")
+  cleaningTasksVerified    CleaningTask[]           @relation("CleaningVerifier")
   inventoryTransactions    InventoryTransaction[]
   inventoryVerifications   InventoryVerification[]  @relation("InventoryVerifiedBy")
   maintenanceIssues        MaintenanceIssue[]       @relation("ReportedBy")
@@ -342,6 +343,10 @@ model CleaningTask {
   dueAt            DateTime?      @map("due_at")
   startedAt        DateTime?      @map("started_at")
   completedAt      DateTime?      @map("completed_at")
+  submittedForVerificationAt DateTime? @map("submitted_for_verification_at")
+  verifiedById     String?        @map("verified_by_id") @db.Uuid
+  verifiedAt       DateTime?      @map("verified_at")
+  submissionMeta   Json?          @map("submission_meta")
   completionPhotoId String?       @unique @map("completion_photo_id") @db.Uuid
   notes            String?        @db.Text
   createdAt        DateTime       @default(now()) @map("created_at")
@@ -350,6 +355,7 @@ model CleaningTask {
   room            Room         @relation(fields: [roomId], references: [id])
   booking         Booking?     @relation(fields: [bookingId], references: [id])
   assignedTo      User?        @relation("AssignedCleaner", fields: [assignedToId], references: [id])
+  verifiedBy      User?        @relation("CleaningVerifier", fields: [verifiedById], references: [id])
   completionPhoto StoredFile?  @relation("CleaningCompletionPhoto", fields: [completionPhotoId], references: [id])
   photos          CleaningPhoto[]
 

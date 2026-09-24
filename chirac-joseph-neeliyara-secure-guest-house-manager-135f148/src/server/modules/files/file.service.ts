@@ -155,3 +155,20 @@ export async function deleteQuarantineFile(quarantinePath: string): Promise<void
     /* ignore */
   }
 }
+
+/** Best-effort removal of blob after DB row is gone; does not throw. */
+export async function deleteStoredFileBlob(storageKey: string): Promise<void> {
+  const env = getEnv();
+  try {
+    if (env.STORAGE_DRIVER === "local") {
+      const fullPath = path.resolve(env.STORAGE_LOCAL_PATH, storageKey);
+      const base = path.resolve(env.STORAGE_LOCAL_PATH);
+      if (!fullPath.startsWith(base + path.sep) && fullPath !== base) return;
+      await unlink(fullPath);
+      return;
+    }
+    /* S3 lifecycle / manual cleanup — DB record already removed */
+  } catch {
+    /* verification DB state remains authoritative */
+  }
+}

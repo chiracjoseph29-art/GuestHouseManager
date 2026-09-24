@@ -2,6 +2,7 @@ import {
   assignCleaningTask,
   attachCleaningPhoto,
   completeCleaningTask,
+  deleteCleaningTaskPermanent,
   listCleaningTasksForUser,
   startCleaningTask,
 } from "@/server/modules/cleaning/cleaning.service";
@@ -45,6 +46,17 @@ export const PATCH = withAuth(
   },
   { anyOf: true },
 );
+
+export const DELETE = withAuth(PERMISSIONS.CLEANING_DELETE_PERMANENT, async ({ req, user, correlationId }) => {
+  const url = new URL(req.url);
+  const id = url.searchParams.get("id");
+  if (!id) throw new ValidationError("id is required.");
+  if (url.searchParams.get("permanent") !== "1") {
+    throw new ValidationError("permanent=1 is required.");
+  }
+  const result = await deleteCleaningTaskPermanent(user, id);
+  return jsonOk(result, correlationId);
+});
 
 export const POST = withAuth(PERMISSIONS.CLEANING_MANAGE, async ({ req, user, correlationId }) => {
   const body = await req.json().catch(() => null);

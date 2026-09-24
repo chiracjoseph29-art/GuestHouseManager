@@ -11,6 +11,7 @@ import { jsonOk, withAuth } from "@/server/http/api-handler";
 import { createBookingSchema, updateBookingSchema } from "@/server/http/schemas";
 import { isBookingFlowDebug, logBookingFlow } from "@/server/lib/booking-flow-log";
 import { computeBookingPricing } from "@/server/modules/bookings/booking-pricing";
+import { assertPermission } from "@/server/rbac/authorize";
 import { PERMISSIONS } from "@/server/rbac/permissions";
 import { ConflictError, ValidationError } from "@/server/lib/errors";
 
@@ -120,6 +121,7 @@ export const DELETE = withAuth(PERMISSIONS.BOOKINGS_MANAGE, async ({ req, user, 
   const id = url.searchParams.get("id");
   if (!id) throw new ValidationError("id is required.");
   if (url.searchParams.get("permanent") === "1") {
+    assertPermission(user, PERMISSIONS.BOOKINGS_DELETE_PERMANENT);
     const result = await deleteBookingPermanent(id, user);
     return jsonOk(result, correlationId);
   }

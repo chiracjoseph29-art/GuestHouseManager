@@ -3,7 +3,8 @@ import { prisma } from "@/server/db/prisma";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/lib/errors";
 import { writeAuditLog } from "@/server/modules/audit/audit.service";
 import type { SessionUser } from "@/server/modules/auth/session.service";
-import { assertAdminOnly, assertPermission } from "@/server/rbac/authorize";
+import { purgeCleaningTaskPermanent } from "@/server/lib/stored-file-cleanup";
+import { assertPermission } from "@/server/rbac/authorize";
 import { PERMISSIONS } from "@/server/rbac/permissions";
 
 export async function listRoomsForAdmin() {
@@ -212,46 +213,16 @@ export async function getRoomDeleteBlockers(roomId: string): Promise<RoomDeleteB
   };
 }
 
-async function deleteStoredFileIfUnreferenced(
-  tx: Prisma.TransactionClient,
-  fileId: string,
-): Promise<void> {
-  const [cleaningPhotos, maintenancePhotos, completionTasks, inventoryItems, verifications] =
-    await Promise.all([
-      tx.cleaningPhoto.count({ where: { fileId } }),
-      tx.maintenancePhoto.count({ where: { fileId } }),
-      tx.cleaningTask.count({ where: { completionPhotoId: fileId } }),
-      tx.inventoryItem.count({ where: { referencePhotoId: fileId } }),
-      tx.inventoryVerification.count({ where: { photoFileId: fileId } }),
-    ]);
-  if (cleaningPhotos + maintenancePhotos + completionTasks + inventoryItems + verifications > 0) {
-    return;
-  }
-  await tx.storedFile.delete({ where: { id: fileId } }).catch(() => undefined);
-}
-
 async function removeRemovableCleaningTasksForRoom(
   tx: Prisma.TransactionClient,
   roomId: string,
 ): Promise<void> {
   const tasks = await tx.cleaningTask.findMany({
     where: { roomId, status: { in: REMOVABLE_CLEANING_STATUSES } },
-    include: { photos: { select: { fileId: true } } },
+    select: { id: true },
   });
   for (const task of tasks) {
-    const fileIds = new Set(task.photos.map((p) => p.fileId));
-    if (task.completionPhotoId) fileIds.add(task.completionPhotoId);
-    if (task.completionPhotoId) {
-      await tx.cleaningTask.update({
-        where: { id: task.id },
-        data: { completionPhotoId: null },
-      });
-    }
-    await tx.cleaningPhoto.deleteMany({ where: { cleaningTaskId: task.id } });
-    await tx.cleaningTask.delete({ where: { id: task.id } });
-    for (const fileId of fileIds) {
-      await deleteStoredFileIfUnreferenced(tx, fileId);
-    }
+    await purgeCleaningTaskPermanent(tx, task.id);
   }
 }
 
@@ -289,7 +260,7 @@ function formatRoomDeleteBlockers(blockers: RoomDeleteBlockers): string {
 }
 
 export async function deleteRoomPermanent(actor: SessionUser, roomId: string) {
-  assertAdminOnly(actor);
+  assertPermission(actor, PERMISSIONS.ROOMS_DELETE_PERMANENT);
 
   const room = await prisma.room.findUnique({
     where: { id: roomId },

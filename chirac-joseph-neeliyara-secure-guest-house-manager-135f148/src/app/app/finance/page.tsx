@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { useSession } from "@/hooks/use-session";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -87,6 +88,8 @@ export default function FinancePage() {
     notes: "",
   });
   const [paymentForm, setPaymentForm] = useState({ bookingId: "", amount: "", method: "CASH", reference: "", notes: "" });
+  const [deleteExpense, setDeleteExpense] = useState<{ id: string; category: string; amount: number } | null>(null);
+  const [deletingExpense, setDeletingExpense] = useState(false);
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({ period });
@@ -112,6 +115,21 @@ export default function FinancePage() {
       }))))
       .catch(() => undefined);
   }, [canManage]);
+
+  async function confirmDeleteExpense() {
+    if (!deleteExpense) return;
+    setDeletingExpense(true);
+    try {
+      await api(`/api/v1/expenses?id=${deleteExpense.id}&permanent=1`, { method: "DELETE" });
+      toast.success("Expense deleted.");
+      setDeleteExpense(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete expense.");
+    } finally {
+      setDeletingExpense(false);
+    }
+  }
 
   async function saveExpense() {
     const amount = Number(expenseForm.amount);
@@ -283,6 +301,7 @@ export default function FinancePage() {
                   <TableHead>Category</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
+                  {canManage && <TableHead className="w-[90px]" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -292,6 +311,18 @@ export default function FinancePage() {
                     <TableCell>{e.category}</TableCell>
                     <TableCell>{e.description}</TableCell>
                     <TableCell className="text-right">{fmt(e.amount)}</TableCell>
+                    {canManage && (
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setDeleteExpense({ id: e.id, category: e.category, amount: e.amount })}
+                        >
+                          Delete
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -328,6 +359,25 @@ export default function FinancePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteExpense)}
+        onOpenChange={(open) => !open && setDeleteExpense(null)}
+        title="Delete expense?"
+        description={
+          deleteExpense ? (
+            <div className="space-y-2 text-sm">
+              <p>This permanently removes this expense and cannot be undone.</p>
+              <p className="font-medium text-slate-800">
+                {deleteExpense.category} — {fmt(deleteExpense.amount)}
+              </p>
+            </div>
+          ) : null
+        }
+        confirmLabel="Delete expense"
+        loading={deletingExpense}
+        onConfirm={() => void confirmDeleteExpense()}
+      />
 
       <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
         <DialogContent>

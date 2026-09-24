@@ -3,7 +3,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@
 import { generateBookingReference } from "@/server/lib/crypto";
 import { writeAuditLog } from "@/server/modules/audit/audit.service";
 import { Prisma, type BookingSource, type BookingStatus, type PaymentStatus } from "@/generated/prisma/client";
-import { assertAdminOnly } from "@/server/rbac/authorize";
+import { assertPermission } from "@/server/rbac/authorize";
 import { PERMISSIONS } from "@/server/rbac/permissions";
 import type { SessionUser } from "@/server/modules/auth/session.service";
 import { computeBookingPricing } from "@/server/modules/bookings/booking-pricing";
@@ -422,7 +422,7 @@ export async function cancelBooking(id: string, actor: SessionUser) {
 }
 
 export async function deleteBookingPermanent(id: string, actor: SessionUser) {
-  assertAdminOnly(actor);
+  assertPermission(actor, PERMISSIONS.BOOKINGS_DELETE_PERMANENT);
 
   const booking = await prisma.booking.findUnique({
     where: { id },

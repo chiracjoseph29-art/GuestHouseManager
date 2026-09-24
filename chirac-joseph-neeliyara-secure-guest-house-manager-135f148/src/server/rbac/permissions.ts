@@ -22,6 +22,10 @@ export const PERMISSIONS = {
   MAINTENANCE_MANAGE: "maintenance.manage",
   PRIVACY_MANAGE: "privacy.manage",
   SESSIONS_REVOKE: "sessions.revoke",
+  BOOKINGS_DELETE_PERMANENT: "bookings.delete_permanent",
+  ROOMS_DELETE_PERMANENT: "rooms.delete_permanent",
+  CLEANING_DELETE_PERMANENT: "cleaning.delete_permanent",
+  EXPENSES_DELETE_PERMANENT: "expenses.delete_permanent",
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

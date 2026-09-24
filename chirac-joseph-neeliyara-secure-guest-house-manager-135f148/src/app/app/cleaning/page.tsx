@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { api, apiForm } from "@/lib/api-client";
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { RoomInventoryChecklist } from "@/components/room-inventory-checklist";
+import { useSession } from "@/hooks/use-session";
 import { submitRoomInventoryVerifications } from "@/lib/room-inventory-verify";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,7 +28,11 @@ function statusBadgeVariant(status: string) {
 }
 
 export default function CleaningPage() {
+  const { user } = useSession();
+  const isAdmin = user?.role === "ADMIN";
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [deleteTask, setDeleteTask] = useState<Task | null>(null);
+  const [deletingTask, setDeletingTask] = useState(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
@@ -64,6 +70,21 @@ export default function CleaningPage() {
       }
     };
   }, [previewUrls]);
+
+  async function confirmDeleteTask() {
+    if (!deleteTask) return;
+    setDeletingTask(true);
+    try {
+      await api(`/api/v1/cleaning/tasks?id=${deleteTask.id}&permanent=1`, { method: "DELETE" });
+      toast.success("Cleaning task deleted.");
+      setDeleteTask(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete cleaning task.");
+    } finally {
+      setDeletingTask(false);
+    }
+  }
 
   async function startTask(id: string) {
     setLoadingId(id);
@@ -208,9 +229,22 @@ export default function CleaningPage() {
           <Card key={task.id}>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle className="text-lg">{task.room.name}</CardTitle>
-              <Badge variant={statusBadgeVariant(task.status)}>
-                {task.status.replace(/_/g, " ")}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant={statusBadgeVariant(task.status)}>
+                  {task.status.replace(/_/g, " ")}
+                </Badge>
+                {isAdmin && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={loadingId === task.id}
+                    onClick={() => setDeleteTask(task)}
+                  >
+                    Delete
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {pending && (
@@ -321,6 +355,23 @@ export default function CleaningPage() {
           </Card>
         );
       })}
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTask)}
+        onOpenChange={(open) => !open && setDeleteTask(null)}
+        title="Delete cleaning task?"
+        description={
+          deleteTask ? (
+            <p className="text-sm">
+              Permanently delete this cleaning task? This will remove the cleaning record and associated
+              cleaning photos/files and cannot be undone.
+              <span className="mt-2 block font-medium text-slate-800">{deleteTask.room.name}</span>
+            </p>
+          ) : null
+        }
+        confirmLabel="Delete task"
+        loading={deletingTask}
+        onConfirm={() => void confirmDeleteTask()}
+      />
     </div>
   );
 }

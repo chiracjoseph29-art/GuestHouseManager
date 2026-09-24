@@ -48,4 +48,16 @@ describe("ADMIN RBAC override", () => {
       assertPermission({ role: "CLEANER", canViewFinancials: false }, PERMISSIONS.FINANCE_VIEW),
     ).toThrow(ForbiddenError);
   });
+
+  it("manager lacks permanent-delete permissions", () => {
+    const manager = { role: "MANAGER" as const, canViewFinancials: true };
+    for (const code of [
+      PERMISSIONS.BOOKINGS_DELETE_PERMANENT,
+      PERMISSIONS.ROOMS_DELETE_PERMANENT,
+      PERMISSIONS.CLEANING_DELETE_PERMANENT,
+      PERMISSIONS.EXPENSES_DELETE_PERMANENT,
+    ]) {
+      expect(() => assertPermission(manager, code)).toThrow(ForbiddenError);
+    }
+  });
 });

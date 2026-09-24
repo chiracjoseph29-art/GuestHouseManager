@@ -166,3 +166,26 @@ export async function updateExpense(
 
   return serializeExpense(expense);
 }
+
+export async function deleteExpensePermanent(actor: SessionUser, expenseId: string) {
+  assertPermission(actor, PERMISSIONS.EXPENSES_DELETE_PERMANENT);
+  const expense = await prisma.expense.findUnique({ where: { id: expenseId } });
+  if (!expense) throw new NotFoundError();
+
+  await prisma.expense.delete({ where: { id: expenseId } });
+
+  await writeAuditLog({
+    userId: actor.id,
+    action: "expense.deleted",
+    resourceType: "expense",
+    resourceId: expenseId,
+    result: "SUCCESS",
+    metadata: {
+      category: expense.category,
+      amount: toNumber(expense.amount),
+      incurredAt: expense.incurredAt.toISOString(),
+    },
+  });
+
+  return { id: expenseId };
+}

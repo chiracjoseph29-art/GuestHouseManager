@@ -51,7 +51,7 @@ const roomTypeSchema = z.object({
   description: z.string().max(500).optional(),
 });
 
-export const DELETE = withAuth(PERMISSIONS.ROOMS_MANAGE, async ({ req, user, correlationId }) => {
+export const DELETE = withAuth(PERMISSIONS.ROOMS_DELETE_PERMANENT, async ({ req, user, correlationId }) => {
   const id = new URL(req.url).searchParams.get("id");
   if (!id) throw new ValidationError("id is required.");
   const result = await deleteRoomPermanent(user, id);

@@ -1,8 +1,11 @@
 import { prisma } from "@/server/db/prisma";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/server/lib/errors";
+import { purgeCleaningTaskPermanent } from "@/server/lib/stored-file-cleanup";
 import { writeAuditLog } from "@/server/modules/audit/audit.service";
 import type { SessionUser } from "@/server/modules/auth/session.service";
 import { assertFileOwnedForPurpose } from "@/server/modules/files/file-policy.service";
+import { assertPermission } from "@/server/rbac/authorize";
+import { PERMISSIONS } from "@/server/rbac/permissions";
 
 export async function listCleaningTasksForUser(user: SessionUser) {
   if (user.role === "ADMIN" || user.role === "MANAGER") {
@@ -183,4 +186,28 @@ export async function reportCleaningIssue(
   });
 
   return issue;
+}
+
+export async function deleteCleaningTaskPermanent(actor: SessionUser, taskId: string) {
+  assertPermission(actor, PERMISSIONS.CLEANING_DELETE_PERMANENT);
+  const task = await prisma.cleaningTask.findUnique({
+    where: { id: taskId },
+    include: { room: { select: { id: true, name: true } } },
+  });
+  if (!task) throw new NotFoundError();
+
+  await prisma.$transaction(async (tx) => {
+    await purgeCleaningTaskPermanent(tx, taskId);
+  });
+
+  await writeAuditLog({
+    userId: actor.id,
+    action: "cleaning.deleted",
+    resourceType: "cleaning_task",
+    resourceId: taskId,
+    result: "SUCCESS",
+    metadata: { roomId: task.roomId, roomName: task.room.name, status: task.status },
+  });
+
+  return { id: taskId, roomId: task.roomId };
 }

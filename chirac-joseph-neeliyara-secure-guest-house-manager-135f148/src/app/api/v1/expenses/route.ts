@@ -1,4 +1,9 @@
-import { createExpense, listExpenses, updateExpense } from "@/server/modules/finance/expense.service";
+import {
+  createExpense,
+  deleteExpensePermanent,
+  listExpenses,
+  updateExpense,
+} from "@/server/modules/finance/expense.service";
 import { jsonOk, withAuth } from "@/server/http/api-handler";
 import { PERMISSIONS } from "@/server/rbac/permissions";
 import { ValidationError } from "@/server/lib/errors";
@@ -65,4 +70,15 @@ export const PUT = withAuth(PERMISSIONS.FINANCE_MANAGE, async ({ req, user, corr
     notes: parsed.data.notes,
   });
   return jsonOk({ expense }, correlationId);
+});
+
+export const DELETE = withAuth(PERMISSIONS.EXPENSES_DELETE_PERMANENT, async ({ req, user, correlationId }) => {
+  const url = new URL(req.url);
+  const id = url.searchParams.get("id");
+  if (!id) throw new ValidationError("id is required.");
+  if (url.searchParams.get("permanent") !== "1") {
+    throw new ValidationError("permanent=1 is required.");
+  }
+  const result = await deleteExpensePermanent(user, id);
+  return jsonOk(result, correlationId);
 });

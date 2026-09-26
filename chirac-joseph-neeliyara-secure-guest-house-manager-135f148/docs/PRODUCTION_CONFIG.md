@@ -10,6 +10,7 @@
 | `REDIS_URL` | optional | required | required |
 | `MALWARE_SCAN_COMMAND` | optional | recommended | required |
 | `ADMIN_MFA_BOOTSTRAP` | true (once) | false | false |
+| `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` | local bootstrap only | unset | set temporarily through secret manager |
 | Seed script | allowed | allowed | **blocked** |
 
 ## Production must disable
@@ -35,8 +36,21 @@ Use `REDIS_URL` so rate limits are shared across instances.
 
 ## Admin MFA bootstrap
 
-1. Deploy with `ADMIN_MFA_BOOTSTRAP=true` temporarily.
-2. Admin signs in, enrolls MFA via `PUT /api/v1/auth/mfa` (`enroll` → `confirm`).
-3. Set `ADMIN_MFA_BOOTSTRAP=false` and redeploy.
+The first production administrator is created by a server-side, one-time CLI. It is not an HTTP endpoint and never sends the bootstrap password to the browser.
+
+1. Generate a unique administrator email and password. Store both as deployment secrets named `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`; do not place them in shell history, source control, logs, or the browser.
+2. Temporarily deploy the application with `ADMIN_MFA_BOOTSTRAP=true` and both bootstrap secrets present.
+3. From the deployed application release directory, run exactly once:
+
+	```bash
+	npm run db:bootstrap-admin
+	```
+
+	The command refuses to run unless `ADMIN_MFA_BOOTSTRAP` is exactly `true`, refuses invalid credentials, and refuses to run if any `ADMIN` already exists. It creates only the administrator and its audit event; it does not run or modify the Prisma seed.
+
+4. Sign in with the bootstrap administrator and enroll MFA through the existing `PUT /api/v1/auth/mfa` flow (`enroll`, then `confirm`). Keep the returned recovery codes in the approved password manager.
+5. Immediately remove `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` from the deployment secrets, set `ADMIN_MFA_BOOTSTRAP=false`, and redeploy/restart every application instance.
+
+The CLI remains unable to create another administrator while an `ADMIN` exists, and production administrator sign-in is rejected when MFA is not enabled after the flag is disabled. Never run `npm run db:seed` against production; production seeding is blocked and the seed also contains demo data.
 
 Without MFA enabled, production admin sign-in is rejected (except during bootstrap).

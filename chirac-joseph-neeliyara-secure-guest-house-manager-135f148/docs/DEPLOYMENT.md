@@ -10,7 +10,7 @@ Use separate `DATABASE_URL`, secrets, and `APP_URL` per development, staging, an
 2. Use least-privilege PostgreSQL role (no `SUPERUSER`, no `CREATEDB`).
 3. Configure object storage (`STORAGE_DRIVER=s3`) and private bucket with signed URL access.
 4. Run `npm run db:deploy` during release.
-5. Remove or rotate all seed passwords; create real admin via controlled process.
+5. Remove or rotate all seed passwords; create the first real admin with the controlled bootstrap process in `docs/PRODUCTION_CONFIG.md`.
 6. Enable centralized log shipping and alerting (failed logins, authz denials).
 7. Schedule encrypted backups (`scripts/backup-db.sh`) and monthly restore drills.
 

@@ -27,6 +27,8 @@ const envSchema = z.object({
   REDIS_URL: z.string().url().optional(),
   MFA_ENCRYPTION_KEY: z.string().min(32).optional(),
   ADMIN_MFA_BOOTSTRAP: z.string().optional(),
+  BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
+  BOOTSTRAP_ADMIN_PASSWORD: z.string().min(12).max(200).optional(),
   MALWARE_SCAN_REQUIRED: z.string().optional(),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   SEED_ADMIN_EMAIL: z.string().email().optional(),

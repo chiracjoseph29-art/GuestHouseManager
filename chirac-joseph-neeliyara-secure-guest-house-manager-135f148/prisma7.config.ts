@@ -3,12 +3,15 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
+/** Prisma CLI only (migrate, validate schema, introspection). App runtime uses DATABASE_URL via Prisma Client. */
+const cliDatabaseUrl = process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"];
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: cliDatabaseUrl,
   },
 });

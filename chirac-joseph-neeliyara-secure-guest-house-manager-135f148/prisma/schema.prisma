@@ -3,6 +3,7 @@ generator client {
   output   = "../src/generated/prisma"
 }
 
+// App runtime: DATABASE_URL (Prisma Client). Prisma CLI URL: DIRECT_URL ?? DATABASE_URL in prisma7.config.ts.
 datasource db {
   provider = "postgresql"
 }

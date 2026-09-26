@@ -3,20 +3,11 @@ import type { NextRequest } from "next/server";
 import { getEnv, isDevelopment, isProduction } from "@/server/config/env";
 
 export function middleware(request: NextRequest) {
-  const response = NextResponse.next();
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
 
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  response.headers.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=()");
-  response.headers.set("X-Frame-Options", "DENY");
-  if (isProduction()) {
-    response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
-  }
-
   const scriptSrc = isDevelopment()
-    ? `script-src 'self' 'nonce-${nonce}' 'unsafe-eval'`
-    : `script-src 'self' 'nonce-${nonce}'`;
+    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`
+    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`;
 
   const csp = [
     "default-src 'self'",
@@ -29,14 +20,30 @@ export function middleware(request: NextRequest) {
     "base-uri 'self'",
     "form-action 'self'",
   ].join("; ");
-  response.headers.set("Content-Security-Policy", csp);
-  response.headers.set("x-nonce", nonce);
 
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+
+  let response: NextResponse;
   if (isProduction() && request.headers.get("x-forwarded-proto") === "http") {
     const url = request.nextUrl.clone();
     url.protocol = "https:";
-    return NextResponse.redirect(url);
+    response = NextResponse.redirect(url);
+  } else {
+    response = NextResponse.next({
+      request: { headers: requestHeaders },
+    });
   }
+
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=()");
+  response.headers.set("X-Frame-Options", "DENY");
+  if (isProduction()) {
+    response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+  }
+
+  response.headers.set("Content-Security-Policy", csp);
 
   void getEnv();
   return response;

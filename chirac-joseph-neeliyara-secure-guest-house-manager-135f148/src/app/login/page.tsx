@@ -127,7 +127,7 @@ export default function LoginPage() {
               </Button>
             </form>
           ) : (
-          <form className="space-y-4" method="post" onSubmit={onSubmit}>
+          <form className="space-y-4" onSubmit={onSubmit}>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input

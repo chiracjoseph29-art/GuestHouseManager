@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
+import { useSession } from "@/hooks/use-session";
 
 type Room = {
   id: string;
@@ -23,6 +24,7 @@ type Room = {
 type RoomType = {
   id: string;
   name: string;
+  description?: string | null;
   maxGuests: number;
   baseRate: string | number;
   extraBedRate?: string | number;
@@ -30,6 +32,7 @@ type RoomType = {
 };
 
 export default function AdminRoomsPage() {
+  const { user } = useSession();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [types, setTypes] = useState<RoomType[]>([]);
   const [open, setOpen] = useState(false);
@@ -41,6 +44,20 @@ export default function AdminRoomsPage() {
   const [rateSaving, setRateSaving] = useState(false);
   const [deleteRoom, setDeleteRoom] = useState<Room | null>(null);
   const [deletingRoom, setDeletingRoom] = useState(false);
+  const [typeDialogOpen, setTypeDialogOpen] = useState(false);
+  const [editingType, setEditingType] = useState<RoomType | null>(null);
+  const [typeForm, setTypeForm] = useState({
+    name: "",
+    description: "",
+    maxGuests: "2",
+    baseRate: "0",
+    extraBedAllowed: false,
+    extraBedRate: "0",
+  });
+  const [typeSaving, setTypeSaving] = useState(false);
+  const [deleteType, setDeleteType] = useState<RoomType | null>(null);
+  const [deletingType, setDeletingType] = useState(false);
+  const [createRoomAfterType, setCreateRoomAfterType] = useState(false);
 
   async function load() {
     const [r, t] = await Promise.all([
@@ -78,6 +95,89 @@ export default function AdminRoomsPage() {
       baseRate: String(type.baseRate),
       extraBedRate: String(type.extraBedRate ?? 0),
     });
+  }
+
+  function openTypeCreate(fromRoom = false) {
+    setEditingType(null);
+    setTypeForm({
+      name: "",
+      description: "",
+      maxGuests: "2",
+      baseRate: "0",
+      extraBedAllowed: false,
+      extraBedRate: "0",
+    });
+    setCreateRoomAfterType(fromRoom);
+    if (fromRoom) setOpen(false);
+    setTypeDialogOpen(true);
+  }
+
+  function openTypeEdit(type: RoomType) {
+    setEditingType(type);
+    setTypeForm({
+      name: type.name,
+      description: type.description ?? "",
+      maxGuests: String(type.maxGuests),
+      baseRate: String(type.baseRate),
+      extraBedAllowed: type.extraBedAllowed ?? false,
+      extraBedRate: String(type.extraBedRate ?? 0),
+    });
+    setCreateRoomAfterType(false);
+    setTypeDialogOpen(true);
+  }
+
+  async function saveType() {
+    if (!typeForm.name.trim()) {
+      toast.error("Room type name is required.");
+      return;
+    }
+    setTypeSaving(true);
+    try {
+      const payload = {
+        name: typeForm.name.trim(),
+        description: typeForm.description.trim(),
+        maxGuests: Number(typeForm.maxGuests),
+        baseRate: Number(typeForm.baseRate),
+        extraBedAllowed: typeForm.extraBedAllowed,
+        extraBedRate: Number(typeForm.extraBedRate),
+      };
+      const result = editingType
+        ? await api<{ roomType: RoomType }>(`/api/v1/room-types?id=${editingType.id}`, {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          })
+        : await api<{ roomType: RoomType }>("/api/v1/room-types", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+      toast.success(editingType ? "Room type updated." : "Room type created.");
+      setTypeDialogOpen(false);
+      await load();
+      if (createRoomAfterType) {
+        setForm((current) => ({ ...current, roomTypeId: result.data.roomType.id }));
+        setOpen(true);
+      }
+      setCreateRoomAfterType(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save room type.");
+    } finally {
+      setTypeSaving(false);
+    }
+  }
+
+  async function confirmDeleteType() {
+    if (!deleteType) return;
+    setDeletingType(true);
+    try {
+      await api(`/api/v1/room-types?id=${deleteType.id}`, { method: "DELETE" });
+      toast.success("Room type deleted.");
+      setDeleteType(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete room type.");
+    } finally {
+      setDeletingType(false);
+    }
   }
 
   async function saveRates() {
@@ -162,7 +262,10 @@ export default function AdminRoomsPage() {
           <Link href="/app/admin" className="text-sm text-slate-500 hover:underline">← Administration</Link>
           <h1 className="text-2xl font-semibold">Rooms</h1>
         </div>
-        <Button onClick={openCreate}>+ Add Room</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => openTypeCreate()}>+ Add Room Type</Button>
+          <Button onClick={openCreate}>+ Add Room</Button>
+        </div>
       </div>
       <div className="space-y-2">
         <h2 className="text-lg font-medium">Room type default rates</h2>
@@ -184,11 +287,27 @@ export default function AdminRoomsPage() {
                 <TableCell>{t.name}</TableCell>
                 <TableCell>₹{Number(t.baseRate).toLocaleString("en-IN")}</TableCell>
                 <TableCell>₹{Number(t.extraBedRate ?? 0).toLocaleString("en-IN")}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="space-x-2 text-right">
+                  <Button size="sm" variant="outline" onClick={() => openTypeEdit(t)}>Edit type</Button>
                   <Button size="sm" variant="outline" onClick={() => openRateEdit(t)}>Edit rates</Button>
+                  {user?.role === "ADMIN" && (
+                    <Button size="sm" variant="outline" className="text-red-700" onClick={() => setDeleteType(t)}>
+                      Delete
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
+            {types.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={4} className="py-8 text-center">
+                  <p className="text-sm text-slate-600">No room types yet — Create room type</p>
+                  <Button className="mt-3" size="sm" onClick={() => openTypeCreate()}>
+                    Create room type
+                  </Button>
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
@@ -227,6 +346,13 @@ export default function AdminRoomsPage() {
               </TableCell>
             </TableRow>
           ))}
+          {rooms.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={6} className="py-8 text-center text-sm text-slate-600">
+                No rooms yet. Create a room type first, then add rooms to make them available for bookings.
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
 
@@ -250,6 +376,61 @@ export default function AdminRoomsPage() {
         loading={deletingRoom}
         onConfirm={confirmDeleteRoom}
       />
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteType)}
+        onOpenChange={(value) => !value && setDeleteType(null)}
+        title={deleteType ? `Delete room type ${deleteType.name}?` : "Delete room type?"}
+        description={
+          deleteType ? (
+            <>
+              <p>This permanently removes this room type.</p>
+              <p className="font-medium text-slate-800">{deleteType.name}</p>
+              <p className="text-xs">Room types assigned to rooms cannot be deleted.</p>
+            </>
+          ) : null
+        }
+        loading={deletingType}
+        onConfirm={confirmDeleteType}
+      />
+
+      <Dialog open={typeDialogOpen} onOpenChange={setTypeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingType ? "Edit room type" : "Create room type"}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div>
+              <Label htmlFor="room-type-name">Name</Label>
+              <Input id="room-type-name" maxLength={100} value={typeForm.name} onChange={(e) => setTypeForm((f) => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="room-type-description">Description</Label>
+              <Input id="room-type-description" maxLength={500} value={typeForm.description} onChange={(e) => setTypeForm((f) => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="room-type-capacity">Maximum guests</Label>
+              <Input id="room-type-capacity" type="number" min={1} max={20} step={1} value={typeForm.maxGuests} onChange={(e) => setTypeForm((f) => ({ ...f, maxGuests: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="room-type-base-rate">Default rate per night (₹)</Label>
+              <Input id="room-type-base-rate" type="number" min={0} step="0.01" value={typeForm.baseRate} onChange={(e) => setTypeForm((f) => ({ ...f, baseRate: e.target.value }))} />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={typeForm.extraBedAllowed} onChange={(e) => setTypeForm((f) => ({ ...f, extraBedAllowed: e.target.checked }))} />
+              Extra bed allowed
+            </label>
+            <div>
+              <Label htmlFor="room-type-extra-rate">Extra bed rate per night (₹)</Label>
+              <Input id="room-type-extra-rate" type="number" min={0} step="0.01" disabled={!typeForm.extraBedAllowed} value={typeForm.extraBedRate} onChange={(e) => setTypeForm((f) => ({ ...f, extraBedRate: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTypeDialogOpen(false)}>Cancel</Button>
+            <Button disabled={typeSaving} onClick={() => void saveType()}>{typeSaving ? "Saving…" : "Save room type"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(rateType)} onOpenChange={(v) => !v && setRateType(null)}>
         <DialogContent>
@@ -295,9 +476,18 @@ export default function AdminRoomsPage() {
             </div>
             <div>
               <Label>Room type</Label>
-              <select className="flex h-9 w-full rounded-md border px-3 text-sm" value={form.roomTypeId} onChange={(e) => setForm((f) => ({ ...f, roomTypeId: e.target.value }))}>
-                {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              {types.length > 0 ? (
+                <select className="flex h-9 w-full rounded-md border px-3 text-sm" value={form.roomTypeId} onChange={(e) => setForm((f) => ({ ...f, roomTypeId: e.target.value }))}>
+                  {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-slate-600">No room types yet. Create one before adding a room.</p>
+                  <Button type="button" size="sm" variant="outline" onClick={() => openTypeCreate(true)}>
+                    Create room type
+                  </Button>
+                </div>
+              )}
             </div>
             <div>
               <Label>Floor</Label>

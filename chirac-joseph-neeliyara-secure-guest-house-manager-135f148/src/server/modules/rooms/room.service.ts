@@ -131,10 +131,57 @@ export async function listRoomTypes() {
   return prisma.roomType.findMany({ orderBy: { name: "asc" } });
 }
 
+export async function createRoomType(
+  actor: SessionUser,
+  data: {
+    name: string;
+    description?: string;
+    maxGuests: number;
+    baseRate: number;
+    extraBedAllowed: boolean;
+    extraBedRate: number;
+  },
+) {
+  assertPermission(actor, PERMISSIONS.ROOMS_MANAGE);
+  const name = data.name.trim();
+  if (!name) throw new ValidationError("Room type name is required.");
+  if (data.maxGuests < 1 || data.maxGuests > 20) {
+    throw new ValidationError("Maximum guests must be between 1 and 20.");
+  }
+  if (data.baseRate < 0 || data.extraBedRate < 0) {
+    throw new ValidationError("Room rates cannot be negative.");
+  }
+
+  const duplicate = await prisma.roomType.findUnique({ where: { name } });
+  if (duplicate) throw new ConflictError("A room type with this name already exists.");
+
+  const roomType = await prisma.roomType.create({
+    data: {
+      name,
+      description: data.description?.trim() || null,
+      maxGuests: data.maxGuests,
+      baseRate: data.baseRate,
+      extraBedAllowed: data.extraBedAllowed,
+      extraBedRate: data.extraBedRate,
+    },
+  });
+
+  await writeAuditLog({
+    userId: actor.id,
+    action: "room_type.created",
+    resourceType: "room_type",
+    resourceId: roomType.id,
+    result: "SUCCESS",
+    metadata: { name: roomType.name },
+  });
+  return roomType;
+}
+
 export async function updateRoomType(
   actor: SessionUser,
   roomTypeId: string,
   data: {
+    name?: string;
     baseRate?: number;
     extraBedRate?: number;
     maxGuests?: number;
@@ -146,6 +193,15 @@ export async function updateRoomType(
   const existing = await prisma.roomType.findUnique({ where: { id: roomTypeId } });
   if (!existing) throw new NotFoundError();
 
+  const name = data.name?.trim();
+  if (data.name !== undefined && !name) throw new ValidationError("Room type name is required.");
+  if (name && name !== existing.name) {
+    const duplicate = await prisma.roomType.findUnique({ where: { name } });
+    if (duplicate) throw new ConflictError("A room type with this name already exists.");
+  }
+  if (data.maxGuests !== undefined && (data.maxGuests < 1 || data.maxGuests > 20)) {
+    throw new ValidationError("Maximum guests must be between 1 and 20.");
+  }
   if (data.baseRate !== undefined && data.baseRate < 0) {
     throw new ValidationError("Base rate cannot be negative.");
   }
@@ -156,6 +212,7 @@ export async function updateRoomType(
   const roomType = await prisma.roomType.update({
     where: { id: roomTypeId },
     data: {
+      name: name ?? existing.name,
       baseRate: data.baseRate ?? existing.baseRate,
       extraBedRate: data.extraBedRate ?? existing.extraBedRate,
       maxGuests: data.maxGuests ?? existing.maxGuests,
@@ -174,6 +231,28 @@ export async function updateRoomType(
   });
 
   return roomType;
+}
+
+export async function deleteRoomType(actor: SessionUser, roomTypeId: string) {
+  assertPermission(actor, PERMISSIONS.ROOMS_DELETE_PERMANENT);
+  const existing = await prisma.roomType.findUnique({ where: { id: roomTypeId } });
+  if (!existing) throw new NotFoundError();
+
+  const roomCount = await prisma.room.count({ where: { roomTypeId } });
+  if (roomCount > 0) {
+    throw new ConflictError("This room type is still assigned to rooms and cannot be deleted.");
+  }
+
+  await prisma.roomType.delete({ where: { id: roomTypeId } });
+  await writeAuditLog({
+    userId: actor.id,
+    action: "room_type.deleted",
+    resourceType: "room_type",
+    resourceId: roomTypeId,
+    result: "SUCCESS",
+    metadata: { name: existing.name },
+  });
+  return { id: roomTypeId };
 }
 
 const REMOVABLE_CLEANING_STATUSES: CleaningStatus[] = [

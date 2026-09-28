@@ -9,6 +9,8 @@ import type { FilePurpose } from "@/generated/prisma/client";
 import type { SessionUser } from "@/server/modules/auth/session.service";
 import { scanUploadBuffer } from "@/server/modules/files/malware-scan.service";
 import { getObjectBuffer, putPrivateObject, getSignedDownloadUrl } from "@/server/modules/files/storage.service";
+import { roleHasPermission } from "@/server/rbac/authorize";
+import { PERMISSIONS } from "@/server/rbac/permissions";
 
 const ALLOWED_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -129,7 +131,11 @@ async function userCanAccessFile(fileId: string, user: SessionUser): Promise<boo
   if (user.role === "ADMIN") return true;
   if (user.role === "MANAGER") {
     const file = await prisma.storedFile.findUnique({ where: { id: fileId }, select: { purpose: true } });
-    return file?.purpose === "CLEANING_PHOTO" || file?.purpose === "MAINTENANCE_PHOTO";
+    return (
+      file?.purpose === "CLEANING_PHOTO" ||
+      file?.purpose === "MAINTENANCE_PHOTO" ||
+      (roleHasPermission(user.role, PERMISSIONS.INVENTORY_VIEW) && file?.purpose === "INVENTORY_REFERENCE")
+    );
   }
 
   const cleaningPhoto = await prisma.cleaningPhoto.findFirst({

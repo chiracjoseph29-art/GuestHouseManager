@@ -43,7 +43,6 @@ function serializeInventoryItem(
     createdAt: Date;
     updatedAt: Date;
     category: { id: string; name: string };
-    referencePhoto: { id: string } | null;
   },
   assignedQty: number,
 ) {
@@ -56,7 +55,7 @@ function serializeInventoryItem(
     unit: i.unit,
     location: i.location,
     allowNegative: i.allowNegative,
-    referencePhotoId: i.referencePhotoId ?? i.referencePhoto?.id ?? null,
+    referencePhotoId: i.referencePhotoId,
     createdAt: i.createdAt.toISOString(),
     updatedAt: i.updatedAt.toISOString(),
     category: i.category ? { id: i.category.id, name: i.category.name } : null,
@@ -82,7 +81,20 @@ export async function listInventory(user: SessionUser) {
   await assertInventoryAccess(user, "view");
   const [items, categories, assignedMap] = await Promise.all([
     prisma.inventoryItem.findMany({
-      include: { category: true, referencePhoto: { select: { id: true } } },
+      select: {
+        id: true,
+        name: true,
+        categoryId: true,
+        quantity: true,
+        minimumThreshold: true,
+        unit: true,
+        location: true,
+        allowNegative: true,
+        referencePhotoId: true,
+        createdAt: true,
+        updatedAt: true,
+        category: { select: { id: true, name: true } },
+      },
       orderBy: { name: "asc" },
     }),
     prisma.inventoryCategory.findMany({ orderBy: { name: "asc" } }),

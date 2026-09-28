@@ -14,11 +14,13 @@ function dayBounds() {
   start.setHours(0, 0, 0, 0);
   const end = new Date();
   end.setHours(23, 59, 59, 999);
-  return { start, end };
+  const endExclusive = new Date(start);
+  endExclusive.setDate(endExclusive.getDate() + 1);
+  return { start, end, endExclusive };
 }
 
 export async function getOperationsOverview(user: SessionUser) {
-  const { start: todayStart, end: todayEnd } = dayBounds();
+  const { start: todayStart, end: todayEnd, endExclusive: tomorrowStart } = dayBounds();
   const monthRange = resolvePeriodRange("month");
 
   const canBookings = roleHasPermission(user.role, PERMISSIONS.BOOKINGS_VIEW) || user.role === "ADMIN";
@@ -41,8 +43,9 @@ export async function getOperationsOverview(user: SessionUser) {
       bookingsToday,
       checkInsToday,
       checkOutsToday,
-      occupiedRooms,
-      activeRooms,
+      bookedRoomRows,
+      wholeHouseBooking,
+      activeRoomRows,
       recentBookings,
     ] = await Promise.all([
       prisma.booking.count({
@@ -63,10 +66,27 @@ export async function getOperationsOverview(user: SessionUser) {
           status: { in: ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"] },
         },
       }),
-      prisma.bookingRoom.count({
-        where: { booking: { status: "CHECKED_IN" } },
+      prisma.bookingRoom.findMany({
+        where: {
+          booking: {
+            status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+            checkIn: { lt: tomorrowStart },
+            checkOut: { gt: todayStart },
+          },
+          room: { isActive: true },
+        },
+        select: { roomId: true },
       }),
-      prisma.room.count({ where: { isActive: true } }),
+      prisma.booking.findFirst({
+        where: {
+          isWholeHouse: true,
+          status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+          checkIn: { lt: tomorrowStart },
+          checkOut: { gt: todayStart },
+        },
+        select: { id: true },
+      }),
+      prisma.room.findMany({ where: { isActive: true }, select: { id: true } }),
       prisma.booking.findMany({
         orderBy: { createdAt: "desc" },
         take: 5,
@@ -79,12 +99,17 @@ export async function getOperationsOverview(user: SessionUser) {
         },
       }),
     ]);
+    const activeRoomIds = new Set(activeRoomRows.map((room) => room.id));
+    const occupiedRoomIds = wholeHouseBooking
+      ? activeRoomIds
+      : new Set(bookedRoomRows.map((row) => row.roomId).filter((roomId) => activeRoomIds.has(roomId)));
+    const occupiedRooms = occupiedRoomIds.size;
     result.bookings = {
       todayCount: bookingsToday,
       checkInsToday,
       checkOutsToday,
       occupiedRooms,
-      availableRooms: Math.max(0, activeRooms - occupiedRooms),
+      availableRooms: Math.max(0, activeRoomIds.size - occupiedRooms),
       recent: recentBookings.map((b) => ({
         id: b.id,
         reference: b.reference,

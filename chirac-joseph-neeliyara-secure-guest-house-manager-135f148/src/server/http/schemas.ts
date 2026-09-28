@@ -64,9 +64,12 @@ export const passwordResetConfirmSchema = z.object({
 });
 
 export const createUserSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(1).max(200),
+  email: z.string().trim().email().max(320),
+  name: z.string().trim().min(1).max(200),
   password: z.string().min(12).max(200),
-  role: z.enum(["ADMIN", "MANAGER", "CLEANER"]),
+  role: z.enum(["MANAGER", "CLEANER"]),
   canViewFinancials: z.boolean().optional(),
+}).refine((input) => input.role === "MANAGER" || input.canViewFinancials !== true, {
+  message: "Financial access is available to managers only.",
+  path: ["canViewFinancials"],
 });

@@ -1,6 +1,6 @@
 import { prisma } from "@/server/db/prisma";
 import { hashPassword, verifyPassword, generateSecureToken, hashToken } from "@/server/lib/crypto";
-import { AppError, AuthError, ValidationError } from "@/server/lib/errors";
+import { AppError, AuthError, ConflictError, ValidationError } from "@/server/lib/errors";
 import { writeAuditLog } from "@/server/modules/audit/audit.service";
 import {
   issueSessionCredentials,
@@ -311,18 +311,24 @@ export async function createUser(input: {
     throw new ValidationError("Password must be at least 12 characters.");
   }
   const passwordHash = await hashPassword(input.password);
-  const user = await prisma.user.create({
-    data: {
-      email: input.email.trim().toLowerCase(),
-      name: input.name.trim(),
-      passwordHash,
-      role: input.role,
-      status: "ACTIVE",
-      canViewFinancials: input.canViewFinancials ?? false,
-      createdById: input.createdById,
-      passwordChangedAt: new Date(),
-    },
-    select: { id: true },
-  });
-  return user;
+  try {
+    return await prisma.user.create({
+      data: {
+        email: input.email.trim().toLowerCase(),
+        name: input.name.trim(),
+        passwordHash,
+        role: input.role,
+        status: "ACTIVE",
+        canViewFinancials: input.canViewFinancials ?? false,
+        createdById: input.createdById,
+        passwordChangedAt: new Date(),
+      },
+      select: { id: true },
+    });
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+      throw new ConflictError("An account with this email already exists.");
+    }
+    throw error;
+  }
 }

@@ -26,7 +26,12 @@ export const GET = withAuth(PERMISSIONS.USERS_VIEW, async ({ correlationId }) =>
 export const POST = withAuth(PERMISSIONS.USERS_MANAGE, async ({ req, user, correlationId, meta }) => {
   const body = await req.json().catch(() => null);
   const parsed = createUserSchema.safeParse(body);
-  if (!parsed.success) throw new ValidationError();
+  if (!parsed.success) {
+    const roleRejected = parsed.error.issues.some((issue) => issue.path[0] === "role");
+    throw new ValidationError(
+      roleRejected ? "Only MANAGER and CLEANER accounts can be created." : "Check the submitted staff details.",
+    );
+  }
   const created = await createUser({ ...parsed.data, createdById: user.id });
   await writeAuditLog({
     userId: user.id,

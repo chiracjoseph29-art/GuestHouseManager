@@ -25,8 +25,6 @@ export async function putPrivateObject(key: string, body: Buffer, contentType: s
       Key: key,
       Body: body,
       ContentType: contentType,
-      ACL: "private",
-      ServerSideEncryption: "AES256",
     }),
   );
 }

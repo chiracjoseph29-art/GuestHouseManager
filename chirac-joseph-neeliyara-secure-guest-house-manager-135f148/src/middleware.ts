@@ -2,8 +2,29 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getEnv, isDevelopment, isProduction } from "@/server/config/env";
 
+function supabaseStorageImageOrigin(endpoint: string | undefined): string | null {
+  if (!endpoint) return null;
+
+  try {
+    const url = new URL(endpoint);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.port ||
+      !/^[a-z0-9-]+\.storage\.supabase\.co$/i.test(url.hostname)
+    ) {
+      return null;
+    }
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 export function middleware(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const storageImageOrigin = supabaseStorageImageOrigin(getEnv().STORAGE_S3_ENDPOINT);
 
   const scriptSrc = isDevelopment()
     ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`
@@ -13,7 +34,7 @@ export function middleware(request: NextRequest) {
     "default-src 'self'",
     scriptSrc,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    `img-src 'self' data: blob:${storageImageOrigin ? ` ${storageImageOrigin}` : ""}`,
     "font-src 'self'",
     "connect-src 'self'",
     "frame-ancestors 'none'",

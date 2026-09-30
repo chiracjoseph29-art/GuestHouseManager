@@ -1,7 +1,7 @@
 {
-  "name": "Guest House Management System",
-  "short_name": "GHMS",
-  "description": "Secure guest house operations",
+  "name": "Summer House Management",
+  "short_name": "Summer House",
+  "description": "Comfortable Stays. Happier Guests.",
   "start_url": "/app",
   "display": "standalone",
   "background_color": "#f8fafc",

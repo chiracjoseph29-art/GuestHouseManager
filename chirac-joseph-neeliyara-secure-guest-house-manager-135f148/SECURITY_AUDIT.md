@@ -1,4 +1,4 @@
-# Security Audit Report — GHMS
+# Security Audit Report — Summer House Management
 
 **Audit date:** 2026-09-10  
 **Scope:** Full application (Next.js API, auth, RBAC, bookings, cleaning, inventory, files, audit, CI, backups)  
@@ -227,7 +227,7 @@ Document RPO/RTO in `docs/BACKUP_RECOVERY.md`. **Do not claim DR readiness** wit
 2. Configure **REDIS_URL** for multi-instance rate limiting.  
 3. Complete **admin MFA enrollment**; disable `ADMIN_MFA_BOOTSTRAP`.  
 4. Enable **MALWARE_SCAN_COMMAND** + `MALWARE_SCAN_REQUIRED=true`.  
-5. Rotate all **seed/demo credentials**; verify demo emails blocked in production.  
+5. Verify production was provisioned through the one-time administrator bootstrap, the seed remains blocked, and no local development fixture accounts are present.
 6. Run staging **smoke + security tests** on production-like config.  
 7. Document/accept **npm audit** transitive findings or upgrade Prisma when safe.  
 8. Successful **restore drill** including object storage (not only Postgres).  

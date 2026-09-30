@@ -2,7 +2,7 @@
 
 ## Overview
 
-GHMS is a modular monolith: a Next.js application exposing a REST API and server-rendered/client UI, backed by PostgreSQL. Modules live under `src/server/modules/*` with thin route handlers in `src/app/api/v1/*`.
+Summer House Management is a modular monolith: a Next.js application exposing a REST API and server-rendered/client UI, backed by PostgreSQL. Modules live under `src/server/modules/*` with thin route handlers in `src/app/api/v1/*`.
 
 ```mermaid
 flowchart LR

@@ -62,7 +62,7 @@ async function verifyTotp(secret: string, token: string): Promise<boolean> {
 export async function beginMfaEnrollment(user: SessionUser): Promise<{ otpauthUrl: string; secret: string }> {
   if (user.role !== "ADMIN") throw new ForbiddenError();
   const secret = generateSecret();
-  const otpauthUrl = generateURI({ issuer: "GHMS", label: user.email, secret });
+  const otpauthUrl = generateURI({ issuer: "Summer House Management", label: user.email, secret });
   await prisma.user.update({
     where: { id: user.id },
     data: { mfaSecretEnc: encryptMfaSecret(secret), mfaEnabled: false },

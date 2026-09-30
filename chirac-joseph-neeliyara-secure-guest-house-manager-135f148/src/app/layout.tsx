@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Guest House Management",
-  description: "Secure operations for bookings, housekeeping, and inventory.",
+  title: "Summer House Management",
+  description: "Comfortable Stays. Happier Guests.",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "GHMS" },
+  appleWebApp: { capable: true, title: "Summer House" },
 };
 
 export const viewport: Viewport = {

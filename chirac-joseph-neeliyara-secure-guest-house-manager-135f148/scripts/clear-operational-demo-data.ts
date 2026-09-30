@@ -150,7 +150,7 @@ async function snapshot(): Promise<Counts> {
 function printPlan(before: Counts): void {
   console.log(`
 ════════════════════════════════════════════════════════════
- Clear operational demo/test data (Guest House Manager)
+ Clear operational demo/test data (Summer House Management)
 ════════════════════════════════════════════════════════════
 
 WILL REMOVE (current counts):

@@ -1,6 +1,6 @@
 # Privacy
 
-This document describes data practices for GHMS. It does **not** constitute legal advice or a claim of automatic compliance with the Digital Personal Data Protection Act, 2023 or other laws.
+This document describes data practices for Summer House Management. It does **not** constitute legal advice or a claim of automatic compliance with the Digital Personal Data Protection Act, 2023 or other laws.
 
 ## Data collected
 
